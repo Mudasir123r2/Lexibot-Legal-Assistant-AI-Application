@@ -24,8 +24,8 @@ export default function ChatDashboard() {
           <p className="text-slate-400 text-sm">AI-powered legal research and assistance</p>
         </div>
 
-        {/* Internal Navbar/Tabs */}
-        <div className="mb-6 shrink-0">
+        {/* Internal Navbar/Tabs - Sticky on scroll */}
+        <div className="mb-6 shrink-0 sticky top-0 z-10 bg-neutral-950/80 backdrop-blur-xl -mx-6 px-6 py-2">
           <div className="flex gap-2 border-b border-white/10 overflow-x-auto scrollbar-hide">
             {tabs.map((tab) => {
               const Icon = tab.icon;

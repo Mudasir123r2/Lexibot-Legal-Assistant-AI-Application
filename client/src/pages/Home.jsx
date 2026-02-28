@@ -36,7 +36,7 @@ export default function Home() {
               AI‑Powered Legal Research, Summaries, and Client Guidance
             </h1>
             <p className="mt-4 text-slate-400">
-              Retrieve judgments faster, summarize complex rulings into plain English, and guide clients with confidence using grounded RAG answers.
+              Retrieve judgments faster, summarize complex rulings into plain English, and guide clients with confidence using AI-powered research.
             </p>
             <div className="mt-6 flex gap-3">
               <Link to="/chat" className="rounded-xl px-5 py-3 font-semibold text-white shadow-[0_8px_30px_rgba(99,102,241,0.35)] bg-[linear-gradient(135deg,#4338CA_0%,#6D28D9_30%,#7C3AED_55%,#DB2777_100%)] hover:shadow-[0_10px_40px_rgba(236,72,153,0.35)]">
@@ -54,10 +54,10 @@ export default function Home() {
             <div className="relative rounded-3xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] p-8">
               <h3 className="text-xl font-bold mb-2">Why LexiBot</h3>
               <p className="text-slate-400">
-                Built for advocates and clients to search, summarize, and reason over legal texts with retrieval‑augmented generation.
+                Built for advocates and clients to search, summarize, and reason over legal texts with intelligent AI assistance.
               </p>
               <ul className="mt-4 space-y-2 text-sm text-slate-300 list-disc list-inside">
-                <li>Semantic case retrieval with vector search</li>
+                <li>Intelligent case search and retrieval</li>
                 <li>Concise, plain‑language summaries</li>
                 <li>Context‑grounded answers with citations</li>
               </ul>
@@ -69,7 +69,7 @@ export default function Home() {
         <section className="container mx-auto px-4 py-10">
           <h2 className="text-2xl font-bold mb-6">Features</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <FeatureCard icon={<FaSearch />} title="RAG Search" desc="Find relevant judgments and statutes with semantic retrieval." />
+            <FeatureCard icon={<FaSearch />} title="Smart Search" desc="Find relevant judgments and statutes with intelligent search." />
             <FeatureCard icon={<FaMagic />} title="Summaries" desc="Turn lengthy rulings into clear, actionable briefs." />
             <FeatureCard icon={<FaRegComments />} title="Guidance" desc="Step‑by‑step checklists and next‑actions for clients." />
             <FeatureCard icon={<FaShieldAlt />} title="Security" desc="Role‑based access and protected chat history." />

@@ -1,10 +1,11 @@
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
-import { useContext } from "react";
+import { useContext, useState } from "react";
 import { AuthContext } from "../context/AuthContext";
 
 export default function DashboardLayout({ children }) {
   const { user } = useContext(AuthContext);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
     <div className="relative min-h-[100dvh] h-[100dvh] bg-[#0a0a0b] text-slate-100 overflow-hidden">
@@ -17,8 +18,8 @@ export default function DashboardLayout({ children }) {
 
       <div className="flex h-[100dvh] w-full">
         {/* Sticky sidebar */}
-        <aside className="hidden md:block sticky top-0 h-[100dvh] w-64 shrink-0 overflow-y-auto border-r border-white/10 bg-neutral-900/40 backdrop-blur-xl z-10">
-          <Sidebar user={user} />
+        <aside className={`hidden md:block relative sticky top-0 h-[100dvh] shrink-0 overflow-y-auto border-r border-white/10 bg-neutral-900/40 backdrop-blur-xl z-10 transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
+          <Sidebar user={user} isCollapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} />
         </aside>
 
         {/* Main column */}

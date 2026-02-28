@@ -1,18 +1,22 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../layout/DashboardLayout";
 import api from "../../api/http";
-import { FiUsers, FiCheckCircle, FiXCircle, FiTrash2, FiMail, FiUser } from "react-icons/fi";
-import { FaCheckCircle, FaTimesCircle } from "react-icons/fa";
+import { FiUsers, FiCheckCircle, FiXCircle, FiTrash2, FiMail, FiUser, FiMessageSquare, FiStar } from "react-icons/fi";
+import { FaCheckCircle, FaTimesCircle, FaStar } from "react-icons/fa";
 
 export default function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState("users");
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, verified: 0, unverified: 0 });
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [feedbackStats, setFeedbackStats] = useState({ total: 0, pending: 0, avgRating: 0 });
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
   const [status, setStatus] = useState({ message: "", type: "" });
 
   useEffect(() => {
     fetchUsers();
+    fetchFeedbacks();
   }, []);
 
   const fetchUsers = async () => {
@@ -32,16 +36,48 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleActivate = async (userId) => {
+  const fetchFeedbacks = async () => {
     try {
-      setActionLoading(userId);
-      await api.put(`/admin/users/${userId}/activate`);
-      await fetchUsers();
-      setStatus({ message: "User activated successfully", type: "success" });
+      const { data } = await api.get("/feedback/all");
+      setFeedbacks(data.feedbacks || []);
+      // Calculate feedback stats
+      const total = data.feedbacks?.length || 0;
+      const pending = data.feedbacks?.filter(f => f.status === "pending").length || 0;
+      const positive = data.feedbacks?.filter(f => f.rating === "positive").length || 0;
+      const avgRating = total > 0 ? Math.round((positive / total) * 100) : 0;
+      setFeedbackStats({ total, pending, avgRating });
+    } catch (err) {
+      console.error("Failed to fetch feedbacks:", err);
+    }
+  };
+
+  const handleUpdateFeedbackStatus = async (feedbackId, newStatus) => {
+    try {
+      setActionLoading(feedbackId);
+      await api.patch(`/feedback/${feedbackId}`, { status: newStatus });
+      await fetchFeedbacks();
+      setStatus({ message: "Feedback status updated", type: "success" });
       setTimeout(() => setStatus({ message: "", type: "" }), 3000);
     } catch (err) {
       setStatus({
-        message: err.response?.data?.message || "Failed to activate user",
+        message: err.response?.data?.detail || "Failed to update feedback",
+        type: "error",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleActivate = async (userId) => {
+    try {
+      setActionLoading(userId);
+      await api.patch(`/admin/users/${userId}/activate`);
+      await fetchUsers();
+      setStatus({ message: "Changes saved successfully", type: "success" });
+      setTimeout(() => setStatus({ message: "", type: "" }), 3000);
+    } catch (err) {
+      setStatus({
+        message: err.response?.data?.detail || "Unable to update user profile",
         type: "error",
       });
     } finally {
@@ -52,13 +88,13 @@ export default function AdminDashboard() {
   const handleDeactivate = async (userId) => {
     try {
       setActionLoading(userId);
-      await api.put(`/admin/users/${userId}/deactivate`);
+      await api.patch(`/admin/users/${userId}/deactivate`);
       await fetchUsers();
-      setStatus({ message: "User deactivated successfully", type: "success" });
+      setStatus({ message: "Changes saved successfully", type: "success" });
       setTimeout(() => setStatus({ message: "", type: "" }), 3000);
     } catch (err) {
       setStatus({
-        message: err.response?.data?.message || "Failed to deactivate user",
+        message: err.response?.data?.detail || "Unable to update user profile",
         type: "error",
       });
     } finally {
@@ -75,11 +111,11 @@ export default function AdminDashboard() {
       setActionLoading(userId);
       await api.delete(`/admin/users/${userId}`);
       await fetchUsers();
-      setStatus({ message: "User deleted successfully", type: "success" });
+      setStatus({ message: "Changes saved successfully", type: "success" });
       setTimeout(() => setStatus({ message: "", type: "" }), 3000);
     } catch (err) {
       setStatus({
-        message: err.response?.data?.message || "Failed to delete user",
+        message: err.response?.data?.detail || "Unable to update user profile",
         type: "error",
       });
     } finally {
@@ -111,7 +147,31 @@ export default function AdminDashboard() {
   return (
     <DashboardLayout>
       <div className="relative">
-        <h1 className="text-2xl font-bold text-white mb-6">Admin Panel - User Management</h1>
+        <h1 className="text-2xl font-bold text-white mb-6">Admin Panel</h1>
+
+        {/* Tab Navigation */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+              activeTab === "users"
+                ? "bg-indigo-600 text-white"
+                : "bg-neutral-800 text-slate-300 hover:bg-neutral-700"
+            }`}
+          >
+            <FiUsers /> User Management
+          </button>
+          <button
+            onClick={() => setActiveTab("feedback")}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+              activeTab === "feedback"
+                ? "bg-indigo-600 text-white"
+                : "bg-neutral-800 text-slate-300 hover:bg-neutral-700"
+            }`}
+          >
+            <FiMessageSquare /> Feedback & Comments
+          </button>
+        </div>
 
         {/* Status Message */}
         {status.message && (
@@ -127,6 +187,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Stats halo card */}
+        {activeTab === "users" && (
         <div className="relative mb-8">
           <div className="absolute -inset-[2px] rounded-3xl bg-[conic-gradient(from_140deg,rgba(99,102,241,.35),rgba(236,72,153,.35),rgba(16,185,129,.35),rgba(99,102,241,.35))] blur opacity-70" />
           <div className="relative rounded-3xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-5 sm:p-6 md:p-7">
@@ -158,8 +219,10 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Users Table */}
+        {activeTab === "users" && (
         <div className="relative">
           <div className="absolute -inset-[2px] rounded-3xl bg-[conic-gradient(from_140deg,rgba(99,102,241,.35),rgba(236,72,153,.35),rgba(16,185,129,.35),rgba(99,102,241,.35))] blur opacity-70" />
           <div className="relative rounded-3xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-5 sm:p-6">
@@ -269,6 +332,112 @@ export default function AdminDashboard() {
             )}
           </div>
         </div>
+        )}
+
+        {/* Feedback Tab */}
+        {activeTab === "feedback" && (
+          <>
+            {/* Feedback Stats */}
+            <div className="relative mb-8">
+              <div className="absolute -inset-[2px] rounded-3xl bg-[conic-gradient(from_140deg,rgba(99,102,241,.35),rgba(236,72,153,.35),rgba(16,185,129,.35),rgba(99,102,241,.35))] blur opacity-70" />
+              <div className="relative rounded-3xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-5 sm:p-6 md:p-7">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                  <FiMessageSquare className="text-indigo-400" />
+                  Feedback Overview
+                </h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div className="rounded-2xl border border-white/10 bg-neutral-900/40 p-4">
+                    <div className="text-slate-400 text-sm">Total Feedback</div>
+                    <div className="text-2xl font-extrabold mt-1">{feedbackStats.total}</div>
+                  </div>
+                  <div className="rounded-2xl border border-yellow-500/30 bg-yellow-900/20 p-4">
+                    <div className="text-yellow-400 text-sm">Pending Review</div>
+                    <div className="text-2xl font-extrabold mt-1 text-yellow-300">{feedbackStats.pending}</div>
+                  </div>
+                  <div className="rounded-2xl border border-green-500/30 bg-green-900/20 p-4">
+                    <div className="text-green-400 text-sm">Positive Rate</div>
+                    <div className="text-2xl font-extrabold mt-1 text-green-300">{feedbackStats.avgRating}%</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Feedback List */}
+            <div className="relative">
+              <div className="absolute -inset-[2px] rounded-3xl bg-[conic-gradient(from_140deg,rgba(99,102,241,.35),rgba(236,72,153,.35),rgba(16,185,129,.35),rgba(99,102,241,.35))] blur opacity-70" />
+              <div className="relative rounded-3xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-5 sm:p-6">
+                <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                  <FiStar className="text-indigo-400" />
+                  All Feedback & Comments ({feedbacks.length})
+                </h2>
+
+                {feedbacks.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">No feedback received yet</div>
+                ) : (
+                  <div className="space-y-4">
+                    {feedbacks.map((feedback) => (
+                      <div
+                        key={feedback._id}
+                        className="rounded-xl border border-white/10 bg-neutral-900/40 p-4"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${
+                                feedback.rating === "positive"
+                                  ? "bg-green-900/30 text-green-300 border border-green-500/30"
+                                  : "bg-red-900/30 text-red-300 border border-red-500/30"
+                              }`}>
+                                {feedback.rating === "positive" ? <FaStar className="text-green-400" /> : <FaTimesCircle />}
+                                {feedback.rating === "positive" ? "Positive" : "Negative"}
+                              </span>
+                              <span className="text-xs text-slate-400 capitalize">{feedback.feedbackType}</span>
+                              <span className={`inline-flex px-2 py-1 rounded-lg text-xs font-medium ${
+                                feedback.status === "pending"
+                                  ? "bg-yellow-900/30 text-yellow-300 border border-yellow-500/30"
+                                  : feedback.status === "reviewed"
+                                  ? "bg-blue-900/30 text-blue-300 border border-blue-500/30"
+                                  : "bg-green-900/30 text-green-300 border border-green-500/30"
+                              }`}>
+                                {feedback.status}
+                              </span>
+                            </div>
+                            {feedback.message && (
+                              <p className="text-slate-300 text-sm mb-2">{feedback.message}</p>
+                            )}
+                            <div className="text-xs text-slate-500">
+                              {new Date(feedback.createdAt).toLocaleString()}
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            {feedback.status === "pending" && (
+                              <button
+                                onClick={() => handleUpdateFeedbackStatus(feedback._id, "reviewed")}
+                                disabled={actionLoading === feedback._id}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-900/30 text-blue-300 border border-blue-500/30 hover:bg-blue-900/50 disabled:opacity-50"
+                              >
+                                {actionLoading === feedback._id ? "..." : "Mark Reviewed"}
+                              </button>
+                            )}
+                            {feedback.status === "reviewed" && (
+                              <button
+                                onClick={() => handleUpdateFeedbackStatus(feedback._id, "resolved")}
+                                disabled={actionLoading === feedback._id}
+                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-900/30 text-green-300 border border-green-500/30 hover:bg-green-900/50 disabled:opacity-50"
+                              >
+                                {actionLoading === feedback._id ? "..." : "Resolve"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </DashboardLayout>
   );

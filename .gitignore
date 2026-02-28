@@ -1,1 +1,53 @@
+# Node.js
+node_modules/
+client/node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+server_fastapi/__pycache__/
+server_fastapi/**/*.pyc
+server_fastapi/**/*.pyo
+server_fastapi/**/*.pyd
+server_fastapi/**/*.pyc
+server_fastapi/.pytest_cache/
+server_fastapi/.mypy_cache/
+server_fastapi/.env
+server_fastapi/.venv/
+server_fastapi/venv/
+server_fastapi/env/
+server_fastapi/.DS_Store
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+server_fastapi/*.log
+
+# Environment
+.env
+*.env
+
+# Build
+dist/
+build/
+client/dist/
+client/build/
+
+# FAISS index
+server_fastapi/data/faiss_index/
+
+# Misc
+*.bak
+*.swp
+*.swo
+*.tmp
 .env

@@ -8,10 +8,21 @@ import { FaBalanceScale } from "react-icons/fa";
 import { FiUser, FiMail, FiLock, FiEye, FiEyeOff } from "react-icons/fi";
 
 const RegisterSchema = Yup.object({
-  name: Yup.string().min(2, "Too short").required("Full name is required"),
-  email: Yup.string().email("Enter a valid email").required("Email is required"),
-  password: Yup.string().min(6, "Min 6 characters").required("Password is required"),
-  role: Yup.mixed().oneOf(["client", "advocate"]).required("Select your role"),
+  name: Yup.string()
+    .min(2, "Name must be at least 2 characters")
+    .max(100, "Name is too long")
+    .matches(/^[a-zA-Z\s]+$/, "Name can only contain letters and spaces")
+    .required("Full name is required"),
+  email: Yup.string()
+    .email("Please enter a valid email address")
+    .required("Email is required"),
+  password: Yup.string()
+    .min(8, "Password must be at least 8 characters")
+    .max(72, "Password cannot exceed 72 characters")
+    .required("Password is required"),
+  role: Yup.mixed()
+    .oneOf(["client", "advocate"], "Please select a valid role")
+    .required("Please select your role"),
 });
 
 export default function Register() {

@@ -37,10 +37,12 @@ export default function ForgotPassword() {
               onSubmit={async (values, { setStatus, setSubmitting }) => {
                 setStatus(null);
                 try {
-                  await http.post("/auth/forgot", values);
+                  await http.post("/auth/forgot-password", values);
                   setStatus("If that email exists, a reset link has been sent.");
-                } catch {
-                  setStatus("If that email exists, a reset link has been sent.");
+                } catch (err) {
+                  console.error("Forgot password error:", err);
+                  const errorMsg = err.response?.data?.detail || "If that email exists, a reset link has been sent.";
+                  setStatus(errorMsg);
                 } finally {
                   setSubmitting(false);
                 }

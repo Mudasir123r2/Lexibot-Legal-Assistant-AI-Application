@@ -25,14 +25,9 @@ export default function Feedback() {
 
     setSubmitting(true);
     try {
-      // In a real app, you'd send this to your backend
-      // For now, we'll simulate it
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Submit feedback to backend API
+      await api.post("/feedback", formData);
       
-      // TODO: Create feedback API endpoint
-      // await api.post("/feedback", formData);
-      
-      console.log("Feedback submitted:", formData);
       setSubmitted(true);
       
       // Reset form after 3 seconds
