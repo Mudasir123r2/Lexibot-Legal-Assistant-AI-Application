@@ -18,11 +18,11 @@ class Settings(BaseSettings):
     ADMIN_NAME: str
     
     # AI/ML Configuration
-    CEREBRAS_API_KEY: str = "your_cerebras_api_key_here"  # Cerebras API key
+    CEREBRAS_API_KEY: str = "csk-6ckrkdjre8d2wc5432t33ntjxtc92wmhfprd2n38x3kx6xrc"
     CEREBRAS_BASE_URL: str = "https://api.cerebras.ai/v1"
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
-    LLM_MODEL: str = "llama-3.3-70b"
-    MAX_TOKENS: int = 65536
+    LLM_MODEL: str = "llama3.1-8b"
+    MAX_TOKENS: int = 8192
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
     TOP_K_RETRIEVAL: int = 5

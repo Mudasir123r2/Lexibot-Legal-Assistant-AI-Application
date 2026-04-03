@@ -4,16 +4,43 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from config.database import connect_db, close_db
-from config.settings import settings
+from config.settings import get_settings
 from routes import auth, cases, judgments, ai, reminders, profile, admin, feedback
+from services.embeddings import get_embedding_service
+from services.vector_store import get_vector_store
+from services.notification_service import get_notification_service
+import logging
+import asyncio
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load configurations
+settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown"""
-    # Startup
+    # Startup: connect to DB and initialize services
+    logger.info("Starting LexiBot API Server...")
+    
+    # Connect to MongoDB
     await connect_db()
+    
+    # Initialize Vector Store
+    logger.info("Initializing Vector Store (FAISS)...")
+    vector_store = get_vector_store()
+    
+    # Initialize Notification Service (Scheduler for Deadlines - 3.3.2)
+    logger.info("Booting NotificationService & Timeline Scanners...")
+    notification_service = get_notification_service()
+    notification_service.start()
+    
     yield
     # Shutdown
+    logger.info("Shutting down LexiBot API Server...")
+    notification_service.stop()
     await close_db()
 
 app = FastAPI(

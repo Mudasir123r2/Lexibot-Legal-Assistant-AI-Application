@@ -38,13 +38,20 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
 def decode_token(token: str) -> TokenData:
     """Decode and validate JWT token"""
     try:
+        if not token:
+            print("❌ decode_token received empty token")
+            return None
+            
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         user_id: str = payload.get("id")
         role: str = payload.get("role")
         
         if user_id is None or role is None:
+            print(f"❌ decode_token missing required claims. Payload: {payload}")
             return None
         
         return TokenData(id=user_id, role=role)
-    except JWTError:
+    except JWTError as e:
+        print(f"❌ decode_token JWTError Exception: {str(e)}")
+        print(f"   Received token length: {len(token) if token else 0}")
         return None

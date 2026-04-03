@@ -50,4 +50,10 @@ server_fastapi/data/faiss_index/
 *.swp
 *.swo
 *.tmp
-.env
+
+# Large Datasets and Temporary Files
+server_fastapi/new datasets/
+server_fastapi/Datacollection/
+server_fastapi/data/raw_documents/
+server_fastapi/embeddings_output.txt
+server_fastapi/show_embeddings.py

@@ -1,8 +1,4 @@
-"""
-RAG (Retrieval-Augmented Generation) Pipeline
-Orchestrates the complete flow: Query → Embedding → Vector Search → LLM Generation
-"""
-
+import re
 from typing import List, Dict, Any, Optional
 import logging
 from .embeddings import get_embedding_service
@@ -45,7 +41,7 @@ class RAGPipeline:
         user_role: str = "client"
     ) -> Dict[str, Any]:
         """
-        Main RAG query method.
+        Process user query using RAG.
         
         Args:
             question: User's legal question
@@ -54,36 +50,88 @@ class RAGPipeline:
             user_role: User's role (client/advocate/admin) for tailored responses
             
         Returns:
-            Dict containing:
-                - answer: Generated answer
-                - sources: Retrieved source documents (if include_sources=True)
-                - confidence: Confidence score
+            Dict containing answer, sources, and confidence
         """
         try:
             logger.info(f"Processing RAG query for {user_role}: {question[:100]}...")
             
-            # Step 1: Embed the query
-            query_embedding = self.embedding_service.embed_query(question)
+            # 3.7 (UC-03): QUERY TOO VAGUE FALLBACK
+            if len(question.strip()) < 10:
+                return {
+                    "answer": "Could you provide more details about your legal query?",
+                    "sources": [],
+                    "confidence": 0.0
+                }
+                
+            # 3.4.1: QUERY PROCESSING (Expansion & Normalization)
+            expanded_query = question
+            query_lower = question.lower()
             
-            # Step 2: Search vector store
-            retrieved_docs = self.vector_store.search(query_embedding, k=top_k)
+            # Simple legal synonym query expansion dictionary
+            legal_synonyms = {
+                "divorce": "khula dissolution marriage separation",
+                "property": "inheritance dispute land ownership real estate",
+                "murder": "homicide culpable qatl criminal code",
+                "contract": "agreement breach specific performance obligation",
+                "custody": "guardianship child welfare minor Hizanat"
+            }
+            
+            for key, synonyms in legal_synonyms.items():
+                if key in query_lower:
+                    expanded_query += f" {synonyms}"
+            
+            logger.info(f"Expanded Query: {expanded_query}")
+            
+            # Step 1: Embed the expanded query
+            query_embedding = self.embedding_service.embed_query(expanded_query)
+            
+            # Step 2: Search vector store (retrieve double for Hybrid Re-ranking)
+            retrieved_docs = self.vector_store.search(query_embedding, k=top_k * 2)
             
             if not retrieved_docs:
                 return {
-                    "answer": "I couldn't find any relevant legal judgments in my database for your question. Please try rephrasing or asking about a different topic.",
+                    "answer": "I couldn't find any relevant legal documents for your question. I suggest consulting a legal professional.",
                     "sources": [],
                     "confidence": 0.0
                 }
             
+            # 3.4.1: HYBRID RETRIEVAL & RE-RANKING
+            # Compute a simplistic cross-encoder simulation (Semantic Score + Keyword Density)
+            # FAISS similarity in this config is usually an L2 distance or cosine score (normalized roughly 0.0-1.0)
+            query_words = set(re.findall(r'\w+', query_lower))
+            
+            for doc in retrieved_docs:
+                content_lower = doc.get("content", "").lower()
+                doc_words = set(re.findall(r'\w+', content_lower))
+                
+                # Calculate Jaccard-like keyword overlap
+                intersection = len(query_words.intersection(doc_words))
+                keyword_density = intersection / len(query_words) if query_words else 0.0
+                
+                # Hybrid Score = Semantic Similarity (60%) + Keyword Overlap (40%)
+                faiss_score = doc.get("similarity", 0)
+                hybrid_score = (faiss_score * 0.6) + (keyword_density * 0.4)
+                doc["hybrid_score"] = hybrid_score
+                
+            # Re-rank formally based on the cross-encoder hybrid score
+            retrieved_docs.sort(key=lambda x: x.get("hybrid_score", 0), reverse=True)
+            
+            # 3.4.1: RELEVANCE FILTERING & TRUNCATION
+            # Filter out severely irrelevant outliers (threshold simulation)
+            filtered_docs = [d for d in retrieved_docs if d.get("hybrid_score", 0) > 0.15][:top_k]
+            
+            if not filtered_docs:
+                filtered_docs = retrieved_docs[:top_k] # Fallback just in case
+                
             # Step 3: Generate answer using LLM with retrieved context and user role
             answer = self.llm_service.generate_with_context(
                 query=question,
-                context_documents=retrieved_docs,
+                context_documents=filtered_docs,
                 user_role=user_role
             )
             
-            # Calculate average confidence from retrieval scores
-            avg_similarity = sum(doc.get('similarity', 0) for doc in retrieved_docs) / len(retrieved_docs)
+            # Calculate average confidence from hybrid retrieval scores
+            avg_similarity = sum(doc.get('hybrid_score', 0) for doc in filtered_docs) / len(filtered_docs)
             
             result = {
                 "answer": answer,
@@ -91,9 +139,9 @@ class RAGPipeline:
             }
             
             if include_sources:
-                result["sources"] = self._format_sources(retrieved_docs)
+                result["sources"] = self._format_sources(filtered_docs)
             
-            logger.info(f"✅ RAG query completed. Retrieved {len(retrieved_docs)} docs, confidence: {result['confidence']}")
+            logger.info(f"✅ RAG query completed. Retrieved {len(filtered_docs)} docs, confidence: {result['confidence']}")
             return result
             
         except Exception as e:

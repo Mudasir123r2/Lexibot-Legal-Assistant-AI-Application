@@ -13,89 +13,76 @@ async def search_judgments(
     query: Optional[str] = Query(None, description="Search in title, case number, keywords, summary"),
     caseType: Optional[str] = Query(None, description="Filter by case type"),
     court: Optional[str] = Query(None, description="Filter by court name"),
-    parties: Optional[str] = Query(None, description="Search by party names"),
-    citation: Optional[str] = Query(None, description="Search by citation/case number"),
-    yearFrom: Optional[int] = Query(None, description="Year range start"),
-    yearTo: Optional[int] = Query(None, description="Year range end"),
     limit: int = Query(20, le=100),
-    page: int = Query(1, ge=1),
-    db = Depends(get_db)
+    page: int = Query(1, ge=1)
 ):
-    """
-    Advanced judgment search with multiple filters.
-    
-    Search capabilities:
-    - query: Search in title, case number, keywords, summary
-    - parties: Search by petitioner/respondent names
-    - citation: Search by specific citation or case number
-    - Filters: caseType, court, year range
-    - Pagination with configurable limit
-    """
     try:
-        filter_query = {}
-        search_conditions = []
+        from services.rag_pipeline import get_rag_pipeline
+        rag = get_rag_pipeline()
+        vector_store = rag.vector_store
         
-        # General text search
-        if query:
-            search_conditions.extend([
-                {"title": {"$regex": query, "$options": "i"}},
-                {"caseNumber": {"$regex": query, "$options": "i"}},
-                {"keywords": {"$regex": query, "$options": "i"}},
-                {"summary": {"$regex": query, "$options": "i"}}
-            ])
+        # Deduplicate FAISS chunks into unified file boundaries
+        unique_judgments = {}
+        for chunk in vector_store.metadata:
+            title = chunk.get("title", "")
+            if not title or title == "Untitled":
+                continue
+            if title not in unique_judgments:
+                # Mock a MongoDB-style _id using the title hex for unique fetching later if needed
+                import hashlib
+                mock_id = hashlib.md5(title.encode()).hexdigest()[:24]
+                unique_judgments[title] = {
+                    "_id": chunk.get("_id", chunk.get("id", mock_id)),
+                    "title": title,
+                    "caseNumber": chunk.get("case_number", "N/A"),
+                    "caseType": chunk.get("case_type", chunk.get("category", "")),
+                    "court": chunk.get("court", ""),
+                    "dateOfJudgment": chunk.get("date", datetime.utcnow().isoformat()),
+                    "judge": chunk.get("judge", ""),
+                    "summary": chunk.get("excerpt", chunk.get("content", "")[:300]) + "..."
+                }
+                
+        all_judgments = list(unique_judgments.values())
         
-        # Party name search
-        if parties:
-            search_conditions.append({"parties": {"$regex": parties, "$options": "i"}})
-        
-        # Citation search
-        if citation:
-            search_conditions.extend([
-                {"caseNumber": {"$regex": citation, "$options": "i"}},
-                {"citation": {"$regex": citation, "$options": "i"}}
-            ])
-        
-        # Apply OR conditions if any
-        if search_conditions:
-            filter_query["$or"] = search_conditions
-        
-        # Exact/partial match filters
+        # Use simple string matching for category/court filters
         if caseType:
-            filter_query["caseType"] = caseType
-        
+            c_lower = caseType.lower()
+            all_judgments = [j for j in all_judgments if c_lower in j.get("caseType", "").lower()]
+            
         if court:
-            filter_query["court"] = {"$regex": court, "$options": "i"}
+            court_lower = court.lower()
+            all_judgments = [j for j in all_judgments if court_lower in j.get("court", "").lower()]
+            
+        # If the user performed a deep string search, prioritize FAISS semantic ranking!
+        if query and len(query.strip()) > 2:
+            semantic_docs = rag.search_judgments(query, top_k=limit)
+            if semantic_docs:
+                all_judgments = []
+                for doc in semantic_docs:
+                    import hashlib
+                    doc_title = doc.get("title", "Untitled")
+                    mock_id = hashlib.md5(doc_title.encode()).hexdigest()[:24]
+                    all_judgments.append({
+                        "_id": doc.get("id", mock_id),
+                        "title": doc_title,
+                        "caseNumber": doc.get("case_type", "N/A"),
+                        "caseType": doc.get("case_type", ""),
+                        "court": doc.get("court", ""),
+                        "dateOfJudgment": doc.get("date", datetime.utcnow().isoformat()),
+                        "summary": doc.get("excerpt", "")
+                    })
+        elif query:
+            # Fallback string filter if query is too short for semantic
+            q_lower = query.lower()
+            all_judgments = [j for j in all_judgments if q_lower in str(j).lower()]
         
-        # Year range
-        if yearFrom or yearTo:
-            filter_query["year"] = {}
-            if yearFrom:
-                filter_query["year"]["$gte"] = yearFrom
-            if yearTo:
-                filter_query["year"]["$lte"] = yearTo
-        
-        # Calculate skip for pagination
+        # Calculate pagination
+        total = len(all_judgments)
         skip = (page - 1) * limit
-        
-        # Get total count
-        total = await db.judgments.count_documents(filter_query)
-        
-        # Get paginated results (excluding fullText for list view)
-        judgments_cursor = db.judgments.find(
-            filter_query,
-            {"fullText": 0}
-        ).sort("dateOfJudgment", -1).skip(skip).limit(limit)
-        
-        judgments = await judgments_cursor.to_list(length=limit)
-        
-        # Convert ObjectIds to strings
-        for judgment in judgments:
-            judgment["_id"] = str(judgment["_id"])
-            if "referencedCases" in judgment:
-                judgment["referencedCases"] = [str(ref) for ref in judgment.get("referencedCases", [])]
+        paginated_judgments = all_judgments[skip:skip+limit]
         
         return {
-            "judgments": judgments,
+            "judgments": paginated_judgments,
             "pagination": {
                 "total": total,
                 "page": page,
@@ -105,23 +92,72 @@ async def search_judgments(
         }
         
     except Exception as e:
-        print(f"Error searching judgments: {e}")
+        print(f"Error searching FAISS metadata judgments: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to search judgments"
+            detail="Failed to search judgments via FAISS pipeline"
         )
 
 @router.get("/{judgment_id}", response_model=JudgmentResponse)
 async def get_judgment(judgment_id: str, db = Depends(get_db)):
     """Get a specific judgment by ID"""
     try:
-        judgment = await db.judgments.find_one({"_id": ObjectId(judgment_id)})
-        
+        from bson.errors import InvalidId
+        try:
+            judgment = await db.judgments.find_one({"_id": ObjectId(judgment_id)})
+        except InvalidId:
+            judgment = None
+            
         if not judgment:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Judgment not found"
-            )
+            from services.rag_pipeline import get_rag_pipeline
+            vector_store = get_rag_pipeline().vector_store
+            chunks = []
+            doc_title = None
+            first_chunk = None
+            
+            for chunk in vector_store.metadata:
+                chunk_title = chunk.get("title", "Untitled")
+                import hashlib
+                mock_id = chunk.get("id", hashlib.md5(chunk_title.encode()).hexdigest()[:24])
+                if mock_id == judgment_id:
+                    chunks.append(chunk)
+                    if not first_chunk:
+                        first_chunk = chunk
+                        doc_title = chunk_title
+                        
+            if not chunks:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Judgment not found"
+                )
+                
+            full_text = "\n\n".join([c.get("content", "") for c in chunks])
+            return {
+                "_id": judgment_id,
+                "title": doc_title or "Untitled",
+                "caseNumber": first_chunk.get("case_number") or "N/A",
+                "court": first_chunk.get("court") or "Not Specified",
+                "judge": first_chunk.get("judge") or "Not Specified",
+                "dateOfJudgment": first_chunk.get("date") or datetime.utcnow().isoformat(),
+                "fullText": full_text or "No content available.",
+                "summary": first_chunk.get("summary") or "No summary available.",
+                "caseType": first_chunk.get("case_type") or "Not Specified",
+                "keyInformation": {
+                    "parties": [{"name": str(first_chunk.get("parties")), "role": "Unknown"}] if first_chunk.get("parties") else [],
+                    "issues": [],
+                    "decisions": [],
+                    "deadlines": [],
+                    "obligations": []
+                },
+                "keywords": [],
+                "citations": [],
+                "referencedCases": [],
+                "jurisdiction": "",
+                "year": None,
+                "tags": [],
+                "createdAt": datetime.utcnow().isoformat(),
+                "updatedAt": datetime.utcnow().isoformat()
+            }
         
         judgment["_id"] = str(judgment["_id"])
         

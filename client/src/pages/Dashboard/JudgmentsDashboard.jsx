@@ -1,7 +1,7 @@
 import DashboardLayout from "../../layout/DashboardLayout";
 import { useState, useEffect } from "react";
-import { FaSearch, FaCalendar, FaGavel, FaFileAlt } from "react-icons/fa";
-import { FiLoader } from "react-icons/fi";
+import { FaSearch, FaCalendar, FaGavel, FaFileAlt, FaRobot } from "react-icons/fa";
+import { FiLoader, FiZap } from "react-icons/fi";
 import api from "../../api/http";
 
 export default function JudgmentsDashboard() {
@@ -31,7 +31,7 @@ export default function JudgmentsDashboard() {
         ...(filters.year && { year: filters.year }),
         ...(filters.court && { court: filters.court })
       };
-      const { data } = await api.get("/judgments", { params });
+      const { data } = await api.get("/judgments/search", { params });
       setJudgments(data.judgments || data);
       if (data.pagination) setPagination(prev => ({ ...prev, total: data.pagination.total }));
     } catch (err) {
@@ -44,10 +44,42 @@ export default function JudgmentsDashboard() {
   const fetchJudgmentDetails = async (id) => {
     try {
       const { data } = await api.get(`/judgments/${id}`);
-      setSelectedJudgment(data);
+      setSelectedJudgment({ ...data, aiSummaryLoading: false, aiExtractLoading: false });
     } catch (err) {
       console.error("Error fetching judgment details:", err);
       alert("Failed to load judgment details");
+    }
+  };
+
+  const handleGenerateSummary = async (judgmentId, fullText) => {
+    if (!fullText) return alert("No full text available to summarize.");
+    setSelectedJudgment(prev => ({ ...prev, aiSummaryLoading: true }));
+    try {
+      const { data } = await api.post("/ai/summarize", {
+        judgmentId: judgmentId,
+        text: fullText
+      });
+      setSelectedJudgment(prev => ({ ...prev, aiSummaryLoading: false, summary: data.summary || data.response }));
+    } catch (err) {
+      console.error("Error generating summary", err);
+      alert("Failed to generate AI summary.");
+      setSelectedJudgment(prev => ({ ...prev, aiSummaryLoading: false }));
+    }
+  };
+
+  const handleExtractInfo = async (judgmentId, fullText) => {
+    if (!fullText) return alert("No full text available to extract from.");
+    setSelectedJudgment(prev => ({ ...prev, aiExtractLoading: true }));
+    try {
+      const { data } = await api.post("/ai/extract", {
+        judgmentId: judgmentId,
+        text: fullText
+      });
+      setSelectedJudgment(prev => ({ ...prev, aiExtractLoading: false, keyInformation: data.extractedInfo || data.information }));
+    } catch (err) {
+      console.error("Error extracting info", err);
+      alert("Failed to extract key information using AI.");
+      setSelectedJudgment(prev => ({ ...prev, aiExtractLoading: false }));
     }
   };
 
@@ -127,7 +159,6 @@ export default function JudgmentsDashboard() {
           {judgments.length === 0 ? (
             <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-12 text-center text-slate-400">
               <p>No judgments found. Try adjusting your search or filters.</p>
-              <p className="text-sm mt-2">Note: This MVP uses mock data. When integrated with actual data sources, judgments will appear here.</p>
             </div>
           ) : (
             judgments.map((judgment) => (
@@ -210,7 +241,7 @@ export default function JudgmentsDashboard() {
                   Close
                 </button>
               </div>
-              
+
               <div className="space-y-4 text-sm">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -231,36 +262,82 @@ export default function JudgmentsDashboard() {
                   )}
                 </div>
 
+                <div className="flex gap-4 mb-4 border-b border-white/5 pb-4">
+                  <button
+                    onClick={() => handleGenerateSummary(selectedJudgment._id, selectedJudgment.fullText)}
+                    disabled={selectedJudgment.aiSummaryLoading}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600/50 transition-colors text-sm font-medium"
+                  >
+                    {selectedJudgment.aiSummaryLoading ? <FiLoader className="animate-spin" /> : <FaRobot />}
+                    Auto-Generate AI Summary
+                  </button>
+                  <button
+                    onClick={() => handleExtractInfo(selectedJudgment._id, selectedJudgment.fullText)}
+                    disabled={selectedJudgment.aiExtractLoading}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-600/30 text-purple-300 hover:bg-purple-600/50 transition-colors text-sm font-medium"
+                  >
+                    {selectedJudgment.aiExtractLoading ? <FiLoader className="animate-spin" /> : <FiZap />}
+                    Extract Key Entities & Deadlines
+                  </button>
+                </div>
+
                 {selectedJudgment.summary && (
-                  <div className="p-4 rounded-xl bg-neutral-800/50">
-                    <h3 className="font-semibold text-white mb-2">Summary</h3>
-                    <p className="text-slate-300 whitespace-pre-wrap">{selectedJudgment.summary}</p>
+                  <div className="p-4 rounded-xl bg-neutral-800/50 ring-1 ring-indigo-500/20">
+                    <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
+                      <FaRobot className="text-indigo-400" /> AI Summary
+                    </h3>
+                    <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{selectedJudgment.summary}</p>
                   </div>
                 )}
 
                 {selectedJudgment.keyInformation && (
-                  <div className="p-4 rounded-xl bg-neutral-800/50">
-                    <h3 className="font-semibold text-white mb-3">Key Information</h3>
-                    {selectedJudgment.keyInformation.parties && selectedJudgment.keyInformation.parties.length > 0 && (
-                      <div className="mb-3">
-                        <h4 className="text-slate-400 mb-1">Parties:</h4>
-                        <ul className="list-disc list-inside text-slate-300">
-                          {selectedJudgment.keyInformation.parties.map((party, i) => (
-                            <li key={i}>{party.name} ({party.role})</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {selectedJudgment.keyInformation.issues && selectedJudgment.keyInformation.issues.length > 0 && (
-                      <div className="mb-3">
-                        <h4 className="text-slate-400 mb-1">Issues:</h4>
-                        <ul className="list-disc list-inside text-slate-300">
-                          {selectedJudgment.keyInformation.issues.map((issue, i) => (
-                            <li key={i}>{issue}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+                  <div className="p-4 rounded-xl bg-neutral-800/50 ring-1 ring-purple-500/20">
+                    <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
+                      <FiZap className="text-purple-400" /> Structed Key Information
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {selectedJudgment.keyInformation.parties && selectedJudgment.keyInformation.parties.length > 0 && (
+                        <div className="mb-3">
+                          <h4 className="text-slate-400 mb-1 text-xs uppercase tracking-wider font-semibold">Parties:</h4>
+                          <ul className="list-disc list-inside text-slate-300 text-sm">
+                            {selectedJudgment.keyInformation.parties.map((party, i) => (
+                              <li key={i}>{party.name || party} {party.role ? `(${party.role})` : ""}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {selectedJudgment.keyInformation.issues && selectedJudgment.keyInformation.issues.length > 0 && (
+                        <div className="mb-3">
+                          <h4 className="text-slate-400 mb-1 text-xs uppercase tracking-wider font-semibold">Issues / Claims:</h4>
+                          <ul className="list-disc list-inside text-slate-300 text-sm">
+                            {selectedJudgment.keyInformation.issues.map((issue, i) => (
+                              <li key={i}>{issue}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {selectedJudgment.keyInformation.obligations && selectedJudgment.keyInformation.obligations.length > 0 && (
+                        <div className="mb-3">
+                          <h4 className="text-amber-400/80 mb-1 text-xs uppercase tracking-wider font-semibold">Obligations / Duties:</h4>
+                          <ul className="list-disc list-inside text-amber-100/70 text-sm">
+                            {selectedJudgment.keyInformation.obligations.map((obl, i) => (
+                              <li key={i}>{obl}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {selectedJudgment.keyInformation.deadlines && selectedJudgment.keyInformation.deadlines.length > 0 && (
+                        <div className="mb-3">
+                          <h4 className="text-rose-400/80 mb-1 text-xs uppercase tracking-wider font-semibold">Decisions / Deadlines:</h4>
+                          <ul className="list-disc list-inside text-rose-100/70 text-sm">
+                            {selectedJudgment.keyInformation.deadlines.map((dl, i) => (
+                              <li key={i}>{dl}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 

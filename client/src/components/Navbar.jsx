@@ -24,7 +24,7 @@ export default function Navbar() {
         <div className="ml-auto flex items-center gap-3">
           {/* Optional user initials/avatar */}
           <div className="hidden sm:flex items-center justify-center h-9 w-9 rounded-full bg-neutral-800 text-slate-200 ring-1 ring-white/10">
-            {(user?.name || "U").split(" ").map(s => s[0]).join("").slice(0,2).toUpperCase()}
+            {(user?.name || "U").split(" ").map(s => s[0]).join("").slice(0, 2).toUpperCase()}
           </div>
 
           <button

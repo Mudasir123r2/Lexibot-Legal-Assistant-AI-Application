@@ -1,10 +1,11 @@
 import DashboardLayout from "../../layout/DashboardLayout";
 import { useState } from "react";
-import { FaComments, FaSearch, FaBrain, FaCommentDots } from "react-icons/fa";
+import { FaComments, FaSearch, FaBrain, FaCommentDots, FaClipboardList } from "react-icons/fa";
 import ChatTab from "./components/ChatTab";
 import CaseLegalSearch from "./components/CaseLegalSearch";
 import OutcomePrediction from "./components/OutcomePrediction";
 import Feedback from "./components/Feedback";
+import ClientGuidance from "./components/ClientGuidance";
 
 export default function ChatDashboard() {
   const [activeTab, setActiveTab] = useState("chat");
@@ -13,6 +14,7 @@ export default function ChatDashboard() {
     { id: "chat", label: "Chat", icon: FaComments },
     { id: "search", label: "Case Search", icon: FaSearch },
     { id: "prediction", label: "Outcome Prediction", icon: FaBrain },
+    { id: "guidance", label: "Client Guidance", icon: FaClipboardList },
     { id: "feedback", label: "Feedback", icon: FaCommentDots },
   ];
 
@@ -54,6 +56,7 @@ export default function ChatDashboard() {
             {activeTab === "chat" && <ChatTab />}
             {activeTab === "search" && <CaseLegalSearch />}
             {activeTab === "prediction" && <OutcomePrediction />}
+            {activeTab === "guidance" && <ClientGuidance />}
             {activeTab === "feedback" && <Feedback />}
           </div>
         </div>

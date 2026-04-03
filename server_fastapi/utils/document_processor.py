@@ -40,7 +40,7 @@ class DocumentProcessor:
     - Extract metadata
     """
     
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, use_ocr: bool = True):
+    def __init__(self, chunk_size: int = 2000, chunk_overlap: int = 400, use_ocr: bool = True):
         """
         Initialize document processor.
         

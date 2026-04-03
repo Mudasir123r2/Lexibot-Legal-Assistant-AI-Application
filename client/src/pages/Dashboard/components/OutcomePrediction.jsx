@@ -18,7 +18,7 @@ export default function OutcomePrediction() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    
+
     // Validate input - [Missing details] case
     if (!formData.caseDescription.trim()) {
       setError("Please complete all required fields");
@@ -32,11 +32,11 @@ export default function OutcomePrediction() {
         legalContext: formData.legalContext,
         caseType: formData.caseType
       });
-      
+
       setPrediction(data);
       setActiveSection("overview");
       setFeedbackGiven(false);
-      
+
       // Save prediction result to user history (handled by backend)
     } catch (err) {
       console.error("Prediction error:", err);
@@ -110,7 +110,7 @@ export default function OutcomePrediction() {
             <FaBrain className="text-indigo-400" />
             Enter Case Information
           </h3>
-          
+
           <form onSubmit={handleSubmit} className="space-y-4 flex-1 flex flex-col">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -258,11 +258,10 @@ export default function OutcomePrediction() {
                       <button
                         key={section.id}
                         onClick={() => setActiveSection(section.id)}
-                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                          activeSection === section.id
+                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex items-center gap-1.5 ${activeSection === section.id
                             ? "bg-indigo-600/30 text-white"
                             : "text-slate-400 hover:text-slate-200 hover:bg-neutral-800/50"
-                        }`}
+                          }`}
                       >
                         <Icon className="text-xs" />
                         {section.label}
@@ -285,7 +284,7 @@ export default function OutcomePrediction() {
                       <p className={`text-xl font-bold ${getOutcomeColor(prediction.prediction).text} mb-4`}>
                         {prediction.prediction}
                       </p>
-                      
+
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-slate-300">Confidence Level</span>
@@ -293,17 +292,16 @@ export default function OutcomePrediction() {
                         </div>
                         <div className="w-full bg-neutral-800/50 rounded-full h-3 overflow-hidden">
                           <div
-                            className={`h-3 rounded-full transition-all ${
-                              prediction.confidence >= 70 ? "bg-emerald-500" :
-                              prediction.confidence >= 50 ? "bg-amber-500" : "bg-rose-500"
-                            }`}
+                            className={`h-3 rounded-full transition-all ${prediction.confidence >= 70 ? "bg-emerald-500" :
+                                prediction.confidence >= 50 ? "bg-amber-500" : "bg-rose-500"
+                              }`}
                             style={{ width: `${prediction.confidence}%` }}
                           />
                         </div>
                         <p className="text-xs text-slate-400 mt-2">
                           {prediction.confidence >= 70 ? "High confidence based on strong precedents" :
-                           prediction.confidence >= 50 ? "Moderate confidence - outcome may vary" :
-                           "Lower confidence - limited similar cases found"}
+                            prediction.confidence >= 50 ? "Moderate confidence - outcome may vary" :
+                              "Lower confidence - limited similar cases found"}
                         </p>
                       </div>
                     </div>

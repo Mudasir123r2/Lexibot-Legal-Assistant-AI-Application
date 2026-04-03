@@ -34,7 +34,7 @@ export default function Sidebar({ user, isCollapsed, onToggle }) {
               </div>
               <span className="text-lg font-semibold text-slate-100">LexiBot</span>
             </div>
-            
+
             {/* Toggle Button - In header */}
             <button
               onClick={onToggle}
@@ -77,7 +77,7 @@ export default function Sidebar({ user, isCollapsed, onToggle }) {
       <div className={`px-4 py-4 border-t border-white/10 ${isCollapsed ? 'flex justify-center' : ''}`}>
         <div className={`flex items-center gap-3 ${isCollapsed ? 'flex-col gap-2' : ''}`}>
           <div className="h-9 w-9 rounded-full bg-neutral-800 text-slate-200 ring-1 ring-white/10 flex items-center justify-center shrink-0 text-xs">
-            {(user?.name || "U").split(" ").map(s => s[0]).join("").slice(0,2).toUpperCase()}
+            {(user?.name || "U").split(" ").map(s => s[0]).join("").slice(0, 2).toUpperCase()}
           </div>
           {!isCollapsed && (
             <div className="min-w-0">
@@ -91,7 +91,7 @@ export default function Sidebar({ user, isCollapsed, onToggle }) {
           )}
         </div>
       </div>
-      
+
     </div>
   );
 }

@@ -31,7 +31,7 @@ export default function CasesDashboard() {
     try {
       setLoading(true);
       const { data } = await api.get("/cases");
-      setCases(data);
+      setCases(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Error fetching cases:", err);
     } finally {
@@ -99,7 +99,7 @@ export default function CasesDashboard() {
 
   const filteredCases = cases.filter(c => {
     const matchesSearch = !searchQuery || 
-      c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.title || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (c.description || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterType === "all" || c.status === filterType;
     return matchesSearch && matchesFilter;

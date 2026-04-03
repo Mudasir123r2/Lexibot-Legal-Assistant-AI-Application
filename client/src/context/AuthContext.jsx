@@ -52,7 +52,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
     } catch (err) {
-      const errorMessage = err.response?.data?.message || "Login failed";
+      const errorMessage = err.response?.data?.detail || err.response?.data?.message || "Login failed";
       throw new Error(errorMessage); // Throw to allow component to handle
     }
   };
@@ -62,7 +62,7 @@ export const AuthProvider = ({ children }) => {
       const { data } = await api.post("/auth/register", payload);
       return data; // Return response data (contains message)
     } catch (err) {
-      throw new Error(err.response?.data?.message || "Registration failed");
+      throw new Error(err.response?.data?.detail || err.response?.data?.message || "Registration failed");
     }
   };
 

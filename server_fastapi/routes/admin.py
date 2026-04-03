@@ -7,6 +7,10 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel
 import logging
+import os
+import shutil
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -319,3 +323,113 @@ async def get_admin_logs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch admin logs"
         )
+
+# ================= SERVER KNOWLEDGE BASE & INGESTION ROUTES =================
+
+def run_ingestion_subprocess():
+    """Runs the python embedding ingestion script in the background."""
+    try:
+        # Run the ingest_judgments script for 'files'
+        subprocess.run(
+            ["python", "scripts/ingest_judgments.py", "--source", "files", "--directory", "data/raw_documents"], 
+            check=True
+        )
+        logger.info("Knowledge base ingestion subprocess completed successfully.")
+    except Exception as e:
+        logger.error(f"Knowledge base ingestion script failed: {e}")
+
+@router.post("/knowledge/upload")
+async def upload_knowledge_documents(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...),
+    current_user: TokenData = Depends(require_admin),
+    db = Depends(get_db)
+):
+    """Upload PDF/DOCX files and automatically trigger chunking and vector FAISS ingestion"""
+    try:
+        UPLOAD_DIR = "data/raw_documents"
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        
+        saved_files = []
+        for file in files:
+            file_path = os.path.join(UPLOAD_DIR, file.filename)
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            saved_files.append(file.filename)
+            
+        # Record admin action
+        await log_admin_action(
+            db, 
+            current_user.id, 
+            "UPLOAD_KNOWLEDGE", 
+            "system", 
+            f"Uploaded {len(saved_files)} files: {', '.join(saved_files)}"
+        )
+        
+        # Trigger the NLP embedding generation in the background!
+        background_tasks.add_task(run_ingestion_subprocess)
+        
+        return {
+            "message": f"Successfully uploaded {len(saved_files)} documents. Deep-learning ingestion pipeline has started in the background."
+        }
+    except Exception as e:
+        logger.error(f"Knowledge upload error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to upload and process documents.")
+
+
+# ================= FAQ PRESET ROUTINES =================
+
+class FAQItem(BaseModel):
+    question: str
+    answer: str
+
+@router.get("/knowledge/faq")
+async def get_all_faqs(current_user: TokenData = Depends(require_admin), db = Depends(get_db)):
+    """Fetch all preset FAQ elements"""
+    try:
+        cursor = db.faq_knowledge.find().sort("createdAt", -1)
+        faqs = await cursor.to_list(length=None)
+        for f in faqs:
+            f["_id"] = str(f["_id"])
+        return {"faqs": faqs}
+    except Exception as e:
+        logger.error(f"Error fetching FAQs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load FAQs")
+
+@router.post("/knowledge/faq")
+async def create_faq(
+    faq: FAQItem,
+    current_user: TokenData = Depends(require_admin), 
+    db = Depends(get_db)
+):
+    """Create a new preset common query"""
+    try:
+        new_faq = {
+            "question": faq.question,
+            "answer": faq.answer,
+            "createdBy": current_user.id,
+            "createdAt": datetime.utcnow()
+        }
+        result = await db.faq_knowledge.insert_one(new_faq)
+        
+        await log_admin_action(db, current_user.id, "CREATE_FAQ", "system", f"Created FAQ: {faq.question[:30]}")
+        
+        return {"message": "FAQ added successfully", "id": str(result.inserted_id)}
+    except Exception as e:
+        logger.error(f"Error creating FAQ: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create FAQ")
+
+@router.delete("/knowledge/faq/{faq_id}")
+async def delete_faq(
+    faq_id: str,
+    current_user: TokenData = Depends(require_admin),
+    db = Depends(get_db)
+):
+    """Delete a preset FAQ"""
+    try:
+        await db.faq_knowledge.delete_one({"_id": ObjectId(faq_id)})
+        await log_admin_action(db, current_user.id, "DELETE_FAQ", "system", f"Deleted FAQ {faq_id}")
+        return {"message": "FAQ deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting FAQ: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete FAQ")

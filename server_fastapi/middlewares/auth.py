@@ -20,7 +20,7 @@ async def get_current_user(
     if token_data is None:
         print("⚠️ Token decoding failed - Invalid or expired token")
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token"
         )
     

@@ -111,17 +111,34 @@ async def chat(
             "sessionId": session_id
         })
         
-        # Use RAG pipeline for response generation with user role
-        rag_result = rag.query(
-            question=request.message,
-            top_k=5,
-            include_sources=True,
-            user_role=current_user.role
-        )
+        # Section 3.1: Check Database of Common Queries (FAQ) BEFORE hitting AI
+        faq_match = None
+        faqs = await db.faq_knowledge.find({}).to_list(length=100)
+        user_query_clean = request.message.lower().strip().replace("?", "")
         
-        response_text = rag_result["answer"]
-        confidence = rag_result.get("confidence", 0.0)
-        sources = rag_result.get("sources", [])
+        for faq in faqs:
+            q_clean = faq.get("question", "").lower().strip().replace("?", "")
+            if q_clean == user_query_clean or (len(q_clean) > 5 and q_clean in user_query_clean):
+                faq_match = faq.get("answer")
+                break
+                
+        if faq_match:
+            response_text = faq_match
+            confidence = 100.0  # Perfect confidence for pre-approved answers
+            sources = [{"title": "LexiBot Verified Knowledge Base", "type": "FAQ"}]
+            logger.info("Chat query intercepted by Pre-set FAQ Knowledge Base.")
+        else:
+            # Use RAG pipeline for response generation with user role
+            rag_result = rag.query(
+                question=request.message,
+                top_k=5,
+                include_sources=True,
+                user_role=current_user.role
+            )
+            
+            response_text = rag_result["answer"]
+            confidence = rag_result.get("confidence", 0.0)
+            sources = rag_result.get("sources", [])
         
         # Prepare new messages
         user_message = {
@@ -145,8 +162,11 @@ async def chat(
             "relatedCaseId": request.caseId
         }
         
-        if request.context:
-            context.update(request.context.model_dump())
+        if request.context is not None:
+            try:
+                context.update(request.context.model_dump())
+            except Exception:
+                pass
         
         if existing_session:
             # Append messages to existing session
