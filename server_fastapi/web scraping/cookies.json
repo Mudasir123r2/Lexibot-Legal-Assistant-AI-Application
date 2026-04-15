@@ -1,0 +1,30 @@
+[
+  {
+    "name": "__RequestVerificationToken",
+    "value": "fN43DuuCSaRTssT7q5L7Op2xyhhmg_gOTfT0-DL7B6i7vw_53DigJh5n_0P5GtwYWRQjRhJWULM655GfPP90ajeVlTC6zDdEdGfjSJgEHF41",
+    "domain": "www.pakistanlawsite.com",
+    "path": "/",
+    "expires": -1,
+    "size": 134,
+    "httpOnly": true,
+    "secure": false,
+    "session": true,
+    "priority": "Medium",
+    "sourceScheme": "Secure",
+    "sameParty": false
+  },
+  {
+    "name": "ASP.NET_SessionId",
+    "value": "jcrjxj2v0hp1p4cy24ehl4lf",
+    "domain": "www.pakistanlawsite.com",
+    "path": "/",
+    "expires": -1,
+    "size": 41,
+    "httpOnly": true,
+    "secure": false,
+    "session": true,
+    "priority": "Medium",
+    "sourceScheme": "Secure",
+    "sameParty": false
+  }
+]

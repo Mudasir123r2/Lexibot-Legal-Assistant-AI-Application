@@ -10,7 +10,7 @@ from services.embeddings import get_embedding_service
 from services.vector_store import get_vector_store
 from services.notification_service import get_notification_service
 import logging
-import asyncio
+import asyncio 
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -51,7 +51,7 @@ app = FastAPI(
 )
 
 # CORS configuration
-allowed_origins = ["http://localhost:5173", "http://localhost:5174"]
+allowed_origins = ["*", "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://localhost:5000"]
 
 app.add_middleware(
     CORSMiddleware,

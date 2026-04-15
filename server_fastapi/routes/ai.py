@@ -128,12 +128,30 @@ async def chat(
             sources = [{"title": "LexiBot Verified Knowledge Base", "type": "FAQ"}]
             logger.info("Chat query intercepted by Pre-set FAQ Knowledge Base.")
         else:
+            explicit_text = None
+            if request.context:
+                try:
+                    ctx_dict = request.context.model_dump() if hasattr(request.context, 'model_dump') else request.context
+                    explicit_text = ctx_dict.get("explicitTextContext")
+                except Exception:
+                    pass
+
+            query_type = "rag_chat"
+            if request.context:
+                try:
+                    ctx_dict = request.context.model_dump() if hasattr(request.context, 'model_dump') else request.context
+                    query_type = ctx_dict.get("queryType", "rag_chat")
+                except Exception:
+                    pass
+
             # Use RAG pipeline for response generation with user role
             rag_result = rag.query(
                 question=request.message,
                 top_k=5,
                 include_sources=True,
-                user_role=current_user.role
+                user_role=current_user.role,
+                explicit_context=explicit_text,
+                query_type=query_type
             )
             
             response_text = rag_result["answer"]

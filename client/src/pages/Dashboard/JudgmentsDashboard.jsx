@@ -1,356 +1,335 @@
-import DashboardLayout from "../../layout/DashboardLayout";
 import { useState, useEffect } from "react";
-import { FaSearch, FaCalendar, FaGavel, FaFileAlt, FaRobot } from "react-icons/fa";
-import { FiLoader, FiZap } from "react-icons/fi";
+import DashboardLayout from "../../layout/DashboardLayout";
+import { FaBookOpen, FaGavel, FaRobot, FaSearch, FaArrowLeft, FaCalendar } from "react-icons/fa";
+import { FiLoader, FiFileText } from "react-icons/fi";
 import api from "../../api/http";
+import ChatTab from "./components/ChatTab";
 
 export default function JudgmentsDashboard() {
+  const [findInputText, setFindInputText] = useState("");
+  const [loading, setLoading] = useState(false);
   const [judgments, setJudgments] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [selectedJudgment, setSelectedJudgment] = useState(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filters, setFilters] = useState({
-    caseType: "",
-    year: "",
-    court: ""
+  const [hasSearched, setHasSearched] = useState(false);
+  
+  // Custom Explain states
+  const [pastedText, setPastedText] = useState("");
+  
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    total: 0
   });
-  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0 });
 
-  useEffect(() => {
-    fetchJudgments();
-  }, [searchQuery, filters, pagination.page]);
-
-  const fetchJudgments = async () => {
+  const handleFindSubmit = async () => {
+    if (!findInputText.trim()) return;
+    setLoading(true);
+    setHasSearched(true);
+    setSelectedJudgment(null); // Reset selection
     try {
-      setLoading(true);
-      const params = {
-        page: pagination.page,
-        limit: pagination.limit,
-        ...(searchQuery && { search: searchQuery }),
-        ...(filters.caseType && { caseType: filters.caseType }),
-        ...(filters.year && { year: filters.year }),
-        ...(filters.court && { court: filters.court })
-      };
-      const { data } = await api.get("/judgments/search", { params });
-      setJudgments(data.judgments || data);
-      if (data.pagination) setPagination(prev => ({ ...prev, total: data.pagination.total }));
-    } catch (err) {
-      console.error("Error fetching judgments:", err);
+      const response = await api.get('/judgments/search', {
+        params: {
+          query: findInputText,
+          page: pagination.page,
+          limit: pagination.limit
+        }
+      });
+      setJudgments(response.data.judgments);
+      setPagination(response.data.pagination);
+    } catch (error) {
+      console.error("Error searching judgments:", error);
+      setJudgments([]);
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (hasSearched) {
+      handleFindSubmit();
+    }
+  }, [pagination.page]);
+
   const fetchJudgmentDetails = async (id) => {
+    setLoading(true);
     try {
-      const { data } = await api.get(`/judgments/${id}`);
-      setSelectedJudgment({ ...data, aiSummaryLoading: false, aiExtractLoading: false });
-    } catch (err) {
-      console.error("Error fetching judgment details:", err);
-      alert("Failed to load judgment details");
-    }
-  };
-
-  const handleGenerateSummary = async (judgmentId, fullText) => {
-    if (!fullText) return alert("No full text available to summarize.");
-    setSelectedJudgment(prev => ({ ...prev, aiSummaryLoading: true }));
-    try {
-      const { data } = await api.post("/ai/summarize", {
-        judgmentId: judgmentId,
-        text: fullText
+      const response = await api.get(`/judgments/${id}`);
+      setSelectedJudgment({
+        ...response.data,
+        isCustom: false
       });
-      setSelectedJudgment(prev => ({ ...prev, aiSummaryLoading: false, summary: data.summary || data.response }));
-    } catch (err) {
-      console.error("Error generating summary", err);
-      alert("Failed to generate AI summary.");
-      setSelectedJudgment(prev => ({ ...prev, aiSummaryLoading: false }));
+    } catch (error) {
+      console.error("Error fetching judgment:", error);
+      if (error.response && error.response.status === 404) {
+        alert("This judgment's ID is outdated. Please refresh your search to get the latest results.");
+      } else {
+        alert("Failed to load full judgment details. Please check your connection.");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleExtractInfo = async (judgmentId, fullText) => {
-    if (!fullText) return alert("No full text available to extract from.");
-    setSelectedJudgment(prev => ({ ...prev, aiExtractLoading: true }));
-    try {
-      const { data } = await api.post("/ai/extract", {
-        judgmentId: judgmentId,
-        text: fullText
-      });
-      setSelectedJudgment(prev => ({ ...prev, aiExtractLoading: false, keyInformation: data.extractedInfo || data.information }));
-    } catch (err) {
-      console.error("Error extracting info", err);
-      alert("Failed to extract key information using AI.");
-      setSelectedJudgment(prev => ({ ...prev, aiExtractLoading: false }));
-    }
+  const handleExplainSubmit = () => {
+    if (!pastedText.trim()) return;
+    setSelectedJudgment({
+        title: "User Provided Text",
+        content: pastedText,
+        isCustom: true
+    });
   };
 
-  if (loading && judgments.length === 0) {
-    return (
-      <DashboardLayout>
-        <div className="min-h-[60dvh] grid place-items-center">
-          <FiLoader className="h-12 w-12 text-indigo-500 animate-spin" />
+  const renderReadableText = (content) => {
+    // Total safety fallback
+    let text = typeof content === 'string' ? content : (content?.fullText || content?.content || "");
+    if (typeof text !== 'string') text = String(text);
+    
+    if (!text || text.trim().length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center p-20 text-slate-500 border border-white/5 border-dashed rounded-2xl">
+           <FiFileText className="text-4xl mb-2 opacity-20"/>
+           <p>No document content available to display.</p>
         </div>
-      </DashboardLayout>
-    );
-  }
+      );
+    }
+
+    const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 0);
+    return paragraphs.map((para, idx) => {
+      // Clean any accidental markdown asterisks left by LLM
+      const cleanPara = para.replace(/\*/g, '').trim();
+      if (!cleanPara) return null;
+
+      // Small title-like paragraphs (ALL CAPS, short)
+      const isKnownHeader = /^(CASE TITLE|CITATION|COURT|DATE OF DECISION|JUDGES|LAWYERS|STATUTES|FACTS|ISSUE|REASONING|HOLDING|CONCLUSION)/.test(cleanPara);
+      const isColonHeader = cleanPara.length < 60 && cleanPara.endsWith(':') && cleanPara === cleanPara.toUpperCase();
+      const isHeader = isKnownHeader || isColonHeader;
+      
+      if (isHeader) {
+         return (
+           <div key={idx} className="w-full mt-6 mb-2">
+             <h4 className="text-indigo-300 font-bold tracking-wider text-sm bg-white/5 inline-flex px-3 py-1 rounded-r-md border-l-2 border-indigo-500">
+               {cleanPara}
+             </h4>
+           </div>
+         );
+      }
+      return (
+        <p key={idx} className="mb-3 leading-relaxed text-[16px] text-slate-300 font-serif text-justify tracking-wide selection:bg-indigo-500/30">
+          {cleanPara}
+        </p>
+      );
+    });
+  };
 
   return (
     <DashboardLayout>
-      <div className="relative">
-        <h1 className="text-2xl font-bold text-white mb-6">Legal Judgments</h1>
-
-        {/* Search and Filters */}
-        <div className="mb-6 space-y-4">
-          <div className="relative">
-            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by case number, title, or keywords..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setPagination(prev => ({ ...prev, page: 1 }));
-              }}
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-            />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <select
-              value={filters.caseType}
-              onChange={(e) => {
-                setFilters({ ...filters, caseType: e.target.value });
-                setPagination(prev => ({ ...prev, page: 1 }));
-              }}
-              className="px-4 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-            >
-              <option value="">All Case Types</option>
-              <option value="Civil">Civil</option>
-              <option value="Criminal">Criminal</option>
-              <option value="Family">Family</option>
-              <option value="Corporate">Corporate</option>
-              <option value="Property">Property</option>
-              <option value="Contract">Contract</option>
-              <option value="Employment">Employment</option>
-            </select>
-            <input
-              type="number"
-              placeholder="Year"
-              value={filters.year}
-              onChange={(e) => {
-                setFilters({ ...filters, year: e.target.value });
-                setPagination(prev => ({ ...prev, page: 1 }));
-              }}
-              className="px-4 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-            />
-            <input
-              type="text"
-              placeholder="Court name"
-              value={filters.court}
-              onChange={(e) => {
-                setFilters({ ...filters, court: e.target.value });
-                setPagination(prev => ({ ...prev, page: 1 }));
-              }}
-              className="px-4 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-            />
-          </div>
-        </div>
-
-        {/* Judgments List */}
-        <div className="space-y-4">
-          {judgments.length === 0 ? (
-            <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-12 text-center text-slate-400">
-              <p>No judgments found. Try adjusting your search or filters.</p>
+      <div className="relative flex-1 flex flex-col font-sans min-h-0">
+        
+        {/* STATE 1: SEARCH AND DISCOVERY VIEW */}
+        {!selectedJudgment ? (
+          <div className="flex-1 flex flex-col items-center justify-start overflow-y-auto w-full max-w-5xl mx-auto py-10 px-4 scrollbar-hide">
+            
+            <div className="w-full text-center mb-10">
+              <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight drop-shadow-lg">
+                Legal <span className="text-indigo-400">Workspace</span>
+              </h1>
+              <p className="text-slate-400 text-lg max-w-2xl mx-auto">
+                Search through our comprehensive legal database or securely paste 
+                your own complex legal documents for immediate AI analysis.
+              </p>
             </div>
-          ) : (
-            judgments.map((judgment) => (
-              <div
-                key={judgment._id}
-                className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-5 hover:ring-white/20 cursor-pointer transition-all"
-                onClick={() => fetchJudgmentDetails(judgment._id)}
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-1">{judgment.title}</h3>
-                    <p className="text-sm text-slate-400">Case No: {judgment.caseNumber}</p>
-                  </div>
-                  {judgment.caseType && (
-                    <span className="px-2 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-400">
-                      {judgment.caseType}
-                    </span>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-slate-300">
-                  <div className="flex items-center gap-2">
-                    <FaGavel className="text-slate-500" />
-                    <span>{judgment.court}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FaCalendar className="text-slate-500" />
-                    <span>{new Date(judgment.dateOfJudgment).toLocaleDateString()}</span>
-                  </div>
-                  {judgment.judge && (
-                    <div className="flex items-center gap-2">
-                      <FaFileAlt className="text-slate-500" />
-                      <span>Judge: {judgment.judge}</span>
-                    </div>
-                  )}
-                </div>
-                {judgment.summary && (
-                  <p className="mt-3 text-sm text-slate-400 line-clamp-2">{judgment.summary}</p>
-                )}
-              </div>
-            ))
-          )}
-        </div>
 
-        {/* Pagination */}
-        {pagination.total > pagination.limit && (
-          <div className="mt-6 flex justify-center gap-2">
-            <button
-              onClick={() => setPagination(prev => ({ ...prev, page: prev.page - 1 }))}
-              disabled={pagination.page === 1}
-              className="px-4 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            <span className="px-4 py-2 text-slate-300">
-              Page {pagination.page} of {Math.ceil(pagination.total / pagination.limit)}
-            </span>
-            <button
-              onClick={() => setPagination(prev => ({ ...prev, page: prev.page + 1 }))}
-              disabled={pagination.page >= Math.ceil(pagination.total / pagination.limit)}
-              className="px-4 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
-          </div>
-        )}
-
-        {/* Judgment Detail Modal */}
-        {selectedJudgment && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-neutral-900 rounded-2xl ring-1 ring-white/10 p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h2 className="text-2xl font-bold text-white mb-2">{selectedJudgment.title}</h2>
-                  <p className="text-slate-400">Case No: {selectedJudgment.caseNumber}</p>
-                </div>
+            {/* Premium Search Bar */}
+            <div className="w-full relative shadow-2xl group mb-12">
+              <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-rose-500 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
+              <div className="relative flex items-center bg-neutral-900 ring-1 ring-white/10 rounded-2xl overflow-hidden p-2">
+                <FaSearch className="text-indigo-400 text-2xl ml-4 mr-2" />
+                <input
+                  type="text"
+                  value={findInputText}
+                  onChange={(e) => setFindInputText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleFindSubmit()}
+                  placeholder="Enter keywords, party name, or case details..."
+                  className="w-full bg-transparent border-none text-xl text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-0 p-4 h-16"
+                />
                 <button
-                  onClick={() => setSelectedJudgment(null)}
-                  className="px-4 py-2 rounded-xl border border-white/10 bg-neutral-800 hover:bg-neutral-700 text-slate-100"
+                  onClick={() => { setPagination(p => ({ ...p, page: 1 })); handleFindSubmit(); }}
+                  disabled={!findInputText.trim() || loading}
+                  className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-slate-500 text-white px-8 py-3 rounded-xl font-bold text-lg transition-all shadow-lg"
                 >
-                  Close
+                  {loading && !judgments.length ? "Searching..." : "Search"}
                 </button>
               </div>
+            </div>
 
-              <div className="space-y-4 text-sm">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="text-slate-500">Court:</span> <span className="text-slate-300 ml-2">{selectedJudgment.court}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-500">Date:</span> <span className="text-slate-300 ml-2">{new Date(selectedJudgment.dateOfJudgment).toLocaleDateString()}</span>
-                  </div>
-                  {selectedJudgment.judge && (
-                    <div>
-                      <span className="text-slate-500">Judge:</span> <span className="text-slate-300 ml-2">{selectedJudgment.judge}</span>
-                    </div>
-                  )}
-                  {selectedJudgment.caseType && (
-                    <div>
-                      <span className="text-slate-500">Type:</span> <span className="text-slate-300 ml-2">{selectedJudgment.caseType}</span>
-                    </div>
-                  )}
+            {/* Custom Paste Section Mini-Banner */}
+            <div className="w-full bg-neutral-900/50 rounded-xl p-6 ring-1 ring-white/5 shadow-xl mb-12 flex flex-col md:flex-row gap-6 items-center justify-between border-l-4 border-rose-500">
+              <div className="flex-1">
+                 <h3 className="text-white font-bold text-lg flex items-center gap-2 mb-1">
+                   <FiFileText className="text-rose-400"/> Custom Document Analysis
+                 </h3>
+                 <p className="text-sm text-slate-400">Have a physical document or unlisted case? Paste your text below to open an isolated AI analysis workspace.</p>
+              </div>
+              <div className="flex-[2] w-full flex gap-2">
+                <input 
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder="Paste your legal text here..."
+                  className="flex-1 bg-black/40 border border-white/10 rounded-lg p-3 text-slate-300 focus:outline-none focus:ring-1 focus:ring-rose-500 text-sm"
+                />
+                <button onClick={handleExplainSubmit} disabled={!pastedText.trim() || pastedText.length > 30000} className="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white px-6 py-2 rounded-lg font-bold text-sm transition-all whitespace-nowrap">
+                   Analyze Text
+                </button>
+              </div>
+            </div>
+
+            {/* Results Section */}
+            {hasSearched && (
+              <div className="w-full flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-6 duration-500">
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="text-xl font-bold text-white">Search Results</h2>
+                  <span className="text-sm text-slate-400">Found {pagination.total} precedents</span>
                 </div>
-
-                <div className="flex gap-4 mb-4 border-b border-white/5 pb-4">
-                  <button
-                    onClick={() => handleGenerateSummary(selectedJudgment._id, selectedJudgment.fullText)}
-                    disabled={selectedJudgment.aiSummaryLoading}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600/50 transition-colors text-sm font-medium"
-                  >
-                    {selectedJudgment.aiSummaryLoading ? <FiLoader className="animate-spin" /> : <FaRobot />}
-                    Auto-Generate AI Summary
-                  </button>
-                  <button
-                    onClick={() => handleExtractInfo(selectedJudgment._id, selectedJudgment.fullText)}
-                    disabled={selectedJudgment.aiExtractLoading}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-purple-600/30 text-purple-300 hover:bg-purple-600/50 transition-colors text-sm font-medium"
-                  >
-                    {selectedJudgment.aiExtractLoading ? <FiLoader className="animate-spin" /> : <FiZap />}
-                    Extract Key Entities & Deadlines
-                  </button>
-                </div>
-
-                {selectedJudgment.summary && (
-                  <div className="p-4 rounded-xl bg-neutral-800/50 ring-1 ring-indigo-500/20">
-                    <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
-                      <FaRobot className="text-indigo-400" /> AI Summary
-                    </h3>
-                    <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{selectedJudgment.summary}</p>
-                  </div>
+                
+                {judgments.length === 0 && !loading && (
+                    <div className="text-center p-12 bg-neutral-900/40 rounded-2xl border border-white/5 border-dashed">
+                      <FaSearch className="text-4xl text-slate-600 mx-auto mb-4" />
+                      <h3 className="text-lg font-bold text-slate-300 mb-1">No judgments found</h3>
+                      <p className="text-sm text-slate-500">Try modifying your keywords or removing filters.</p>
+                    </div>
                 )}
 
-                {selectedJudgment.keyInformation && (
-                  <div className="p-4 rounded-xl bg-neutral-800/50 ring-1 ring-purple-500/20">
-                    <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
-                      <FiZap className="text-purple-400" /> Structed Key Information
-                    </h3>
-
+                {loading && judgments.length === 0 ? (
+                    <div className="flex justify-center p-12"><FiLoader className="text-4xl text-indigo-500 animate-spin" /></div>
+                ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {selectedJudgment.keyInformation.parties && selectedJudgment.keyInformation.parties.length > 0 && (
-                        <div className="mb-3">
-                          <h4 className="text-slate-400 mb-1 text-xs uppercase tracking-wider font-semibold">Parties:</h4>
-                          <ul className="list-disc list-inside text-slate-300 text-sm">
-                            {selectedJudgment.keyInformation.parties.map((party, i) => (
-                              <li key={i}>{party.name || party} {party.role ? `(${party.role})` : ""}</li>
-                            ))}
-                          </ul>
+                      {judgments.map((judgment) => (
+                        <div
+                          key={judgment._id}
+                          onClick={() => fetchJudgmentDetails(judgment._id)}
+                          className="bg-neutral-900/60 hover:bg-neutral-800 rounded-xl p-5 ring-1 ring-white/10 hover:ring-indigo-500/50 cursor-pointer transition-all duration-200 group flex flex-col shadow-lg"
+                        >
+                          <h4 className="text-white text-lg font-bold mb-3 leading-snug group-hover:text-indigo-300 transition-colors line-clamp-3">
+                            {judgment.title}
+                          </h4>
+                          <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-300 font-medium">
+                            <div className="w-full flex flex-col gap-1.5 mb-2">
+                               {/* Key IDs */}
+                               <div className="flex flex-wrap gap-3">
+                                 {judgment.journal && <span className="flex items-center gap-1 text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded"><FiFileText size={12}/> <b>Journal:</b> {judgment.journal}</span>}
+                                 {judgment.caseNumber && judgment.caseNumber !== "N/A" && <span className="flex items-center gap-1 text-sky-400 bg-sky-400/10 px-2 py-1 rounded"><FiFileText size={12}/> <b>Appeal No:</b> {judgment.caseNumber}</span>}
+                               </div>
+                               
+                               {/* People / Parties */}
+                               {judgment.parties && <span className="flex items-center gap-1.5 text-indigo-300 truncate w-full" title={judgment.parties}><FiFileText className="shrink-0"/> <span className="font-semibold text-slate-400">Parties:</span> {judgment.parties}</span>}
+                               {judgment.lawyers && <span className="flex items-center gap-1.5 text-rose-300 line-clamp-1 w-full" title={judgment.lawyers}><FiFileText className="shrink-0"/> <span className="font-semibold text-slate-400">Lawyers:</span> {judgment.lawyers}</span>}
+                               
+                               {/* Meta Facts */}
+                               {judgment.statutes && <span className="flex items-center gap-1.5 text-amber-300 line-clamp-1 w-full" title={judgment.statutes}><FiFileText className="shrink-0"/> <span className="font-semibold text-slate-400">Statutes:</span> {judgment.statutes}</span>}
+                            </div>
+                            
+                            <div className="w-full flex items-center justify-between text-slate-400 border-t border-white/5 pt-2 mt-1">
+                               <span className="flex items-center gap-1.5"><FaGavel className="text-slate-500"/> {judgment.court || 'Court N/A'}</span>
+                               <span className="flex items-center gap-1.5"><FaCalendar className="text-slate-500"/> {judgment.dateOfJudgment ? (isNaN(new Date(judgment.dateOfJudgment)) ? 'N/A' : new Date(judgment.dateOfJudgment).getFullYear()) : 'Year N/A'}</span>
+                            </div>
+                          </div>
                         </div>
-                      )}
-                      {selectedJudgment.keyInformation.issues && selectedJudgment.keyInformation.issues.length > 0 && (
-                        <div className="mb-3">
-                          <h4 className="text-slate-400 mb-1 text-xs uppercase tracking-wider font-semibold">Issues / Claims:</h4>
-                          <ul className="list-disc list-inside text-slate-300 text-sm">
-                            {selectedJudgment.keyInformation.issues.map((issue, i) => (
-                              <li key={i}>{issue}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {selectedJudgment.keyInformation.obligations && selectedJudgment.keyInformation.obligations.length > 0 && (
-                        <div className="mb-3">
-                          <h4 className="text-amber-400/80 mb-1 text-xs uppercase tracking-wider font-semibold">Obligations / Duties:</h4>
-                          <ul className="list-disc list-inside text-amber-100/70 text-sm">
-                            {selectedJudgment.keyInformation.obligations.map((obl, i) => (
-                              <li key={i}>{obl}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {selectedJudgment.keyInformation.deadlines && selectedJudgment.keyInformation.deadlines.length > 0 && (
-                        <div className="mb-3">
-                          <h4 className="text-rose-400/80 mb-1 text-xs uppercase tracking-wider font-semibold">Decisions / Deadlines:</h4>
-                          <ul className="list-disc list-inside text-rose-100/70 text-sm">
-                            {selectedJudgment.keyInformation.deadlines.map((dl, i) => (
-                              <li key={i}>{dl}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+                      ))}
                     </div>
-                  </div>
                 )}
-
-                {selectedJudgment.fullText && (
-                  <div className="p-4 rounded-xl bg-neutral-800/50">
-                    <h3 className="font-semibold text-white mb-2">Full Text</h3>
-                    <p className="text-slate-300 whitespace-pre-wrap max-h-[400px] overflow-y-auto">{selectedJudgment.fullText}</p>
+                
+                {/* Clean Pagination */}
+                {pagination.total > pagination.limit && !loading && (
+                  <div className="flex justify-center items-center gap-4 mt-8 mb-10">
+                     <button onClick={() => setPagination(p => ({...p, page: p.page - 1}))} disabled={pagination.page===1} className="px-4 py-2 rounded-lg bg-neutral-900 ring-1 ring-white/10 text-sm font-semibold hover:bg-neutral-800 disabled:opacity-30 text-white transition-all">Previous</button>
+                     <span className="text-sm font-bold text-slate-400">Page {pagination.page} of {Math.ceil(pagination.total/pagination.limit)}</span>
+                     <button onClick={() => setPagination(p => ({...p, page: p.page + 1}))} disabled={pagination.page>=Math.ceil(pagination.total/pagination.limit)} className="px-4 py-2 rounded-lg bg-neutral-900 ring-1 ring-white/10 text-sm font-semibold hover:bg-neutral-800 disabled:opacity-30 text-white transition-all">Next</button>
                   </div>
                 )}
               </div>
+            )}
+          </div>
+        ) : (
+          
+          /* STATE 2: DEEP ANALYSIS WORKSPACE (SPLIT SCREEN) */
+          <div className="flex-1 flex flex-col w-full h-full bg-black overflow-hidden z-[50] opacity-100">
+            {/* Top Bar Navigation */}
+            <div className="h-16 shrink-0 bg-neutral-900 ring-1 ring-white/10 px-4 flex items-center justify-between z-10 shadow-md">
+               <button 
+                 onClick={() => setSelectedJudgment(null)} 
+                 className="flex items-center gap-2 text-sm font-bold text-slate-300 hover:text-white bg-black/40 hover:bg-white/10 px-4 py-2 rounded-lg transition-colors ring-1 ring-white/5"
+               >
+                 <FaArrowLeft /> Back to Search Results
+               </button>
+               <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold uppercase tracking-widest text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full ring-1 ring-emerald-400/30">
+                    Analysis Mode Active
+                  </span>
+               </div>
+            </div>
+
+            {/* Split Panels */}
+            <div className="flex-1 flex min-h-0">
+               
+               {/* Left: Document Reader (70%) */}
+               <div className="flex-[7] bg-[#1a1c23] overflow-y-auto p-8 relative scrollbar-hide">
+                  <div className="max-w-4xl mx-auto">
+                     <h2 className="text-3xl font-bold text-white mb-6 leading-tight pb-6 border-b border-white/10">
+                        {selectedJudgment.title}
+                     </h2>
+                     {!selectedJudgment.isCustom && (
+                       <div className="flex flex-col gap-3 text-sm text-slate-400/80 mb-10 bg-neutral-900/50 p-5 rounded-xl ring-1 ring-white/5 shadow-inner">
+                         <div className="flex flex-wrap items-center gap-6 pb-3 border-b border-white/5">
+                           <span className="flex items-center gap-2 font-medium"><FaGavel className="text-indigo-400" /> Court: <span className="text-slate-300">{selectedJudgment.court || 'N/A'}</span></span>
+                           <span className="flex items-center gap-2 font-medium"><FaCalendar className="text-indigo-400" /> Date: <span className="text-slate-300">{selectedJudgment.dateOfJudgment ? (isNaN(new Date(selectedJudgment.dateOfJudgment)) ? selectedJudgment.dateOfJudgment : new Date(selectedJudgment.dateOfJudgment).toLocaleDateString()) : 'N/A'}</span></span>
+                           <span className="flex items-center gap-2 font-medium"><FiFileText className="text-indigo-400" /> Ref: <span className="text-slate-300">{selectedJudgment.caseNumber || 'N/A'}</span></span>
+                         </div>
+                         <div className="flex flex-col gap-4 pt-1">
+                           {(selectedJudgment.journal || selectedJudgment.citation) && <span className="flex items-start gap-2 font-medium"><FiFileText className="text-emerald-400 mt-1" /> Journal: <span className="text-slate-300">{selectedJudgment.journal || selectedJudgment.citation}</span></span>}
+                           {selectedJudgment.lawyers && <span className="flex items-start gap-2 font-medium"><FiFileText className="text-rose-400 mt-1" /> Lawyers: <span className="text-slate-300 max-w-full leading-relaxed" title="Lawyers">{selectedJudgment.lawyers}</span></span>}
+                           {selectedJudgment.statutes && <span className="flex items-start gap-2 font-medium"><FiFileText className="text-amber-400 mt-1" /> Statutes: <span className="text-slate-300 max-w-full leading-relaxed" title="Statutes">{selectedJudgment.statutes}</span></span>}
+                         </div>
+                       </div>
+                     )}
+                     
+                     <div className="prose prose-invert max-w-none text-slate-300 pb-32">
+                        {renderReadableText(selectedJudgment.fullText || selectedJudgment.content)}
+                     </div>
+                  </div>
+               </div>
+
+               {/* Right: LexiBot Chat (30%) */}
+               <div className="flex-[3] min-w-[400px] border-l border-white/10 bg-neutral-900/80 flex flex-col shadow-[rgba(0,0,0,0.5)_-10px_0_25px]">
+                 <div className="p-4 border-b border-white/5 bg-black/20 flex flex-col items-center justify-center pt-6 pb-6 shadow-sm">
+                   <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center ring-4 ring-black shadow-[0_0_15px_rgba(99,102,241,0.5)] mb-3">
+                      <FaRobot className="text-white text-xl" />
+                   </div>
+                   <h3 className="font-bold text-white text-lg tracking-wide">LexiBot</h3>
+                   <p className="text-xs text-slate-400 text-center mt-1 max-w-[250px]">
+                     Your context is rigidly locked to this exact document. Ask me anything about it.
+                   </p>
+                 </div>
+                 
+                 <div className="flex-1 max-h-full overflow-hidden relative">
+                   <ChatTab 
+                     hideSidebar={true} 
+                     contextData={selectedJudgment ? { 
+                       judgmentId: selectedJudgment._id, 
+                       title: selectedJudgment.title,
+                       explicitTextContext: selectedJudgment.isCustom 
+                         ? selectedJudgment.content 
+                         : (selectedJudgment.fullText || selectedJudgment.content || null),
+                       queryType: "single_document"
+                     } : null}
+                     selectedDocAvailable={!!selectedJudgment}
+                   />
+                 </div>
+               </div>
+
             </div>
           </div>
         )}
+        
       </div>
     </DashboardLayout>
   );

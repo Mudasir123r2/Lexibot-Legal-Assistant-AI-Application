@@ -190,17 +190,40 @@ async def ingest_from_files(directory: str = "data/raw_documents", recursive: bo
         vector_store = get_vector_store()
         doc_processor = get_document_processor()
         
+        # Build check to skip already processed files to allow safe resuming
+        processed_files = set()
+        try:
+            # Check existing metadata if vector store exists
+            if hasattr(vector_store, 'get_all_metadata'):
+                existing_meta = vector_store.get_all_metadata()
+                processed_files = {m.get("source_file") for m in existing_meta if m.get("source_file")}
+            # Fallback if that method doesn't exist, try inspecting docstore
+            elif hasattr(vector_store, 'vectorstore') and hasattr(vector_store.vectorstore, 'docstore'):
+                processed_files = {doc.metadata.get("source_file") for doc in vector_store.vectorstore.docstore._dict.values() if doc.metadata.get("source_file")}
+            logger.info(f"Safely found {len(processed_files)} existing files in the index to skip.")
+        except Exception as e:
+            logger.warning(f"Could not check existing index for resumed files: {e}")
+            
+        BATCH_SIZE = 100
+        total_chunks_processed = 0
+        skipped_count = 0
+        
         all_texts = []
         all_metadata = []
         
         for i, file_path in enumerate(files):
+            if file_path.name in processed_files:
+                skipped_count += 1
+                if skipped_count % 500 == 0:
+                    logger.info(f"Skipped {skipped_count} already indexed files...")
+                continue
+                
             try:
                 logger.info(f"Processing [{i+1}/{len(files)}]: {file_path.name}")
                 
                 # Extract category from folder structure (if subdirectory)
                 category = None
                 if file_path.parent != doc_dir:
-                    # Get immediate parent folder name as category
                     category = file_path.parent.name
                 
                 # Process document
@@ -209,10 +232,8 @@ async def ingest_from_files(directory: str = "data/raw_documents", recursive: bo
                     "title": file_path.stem
                 }
                 
-                # Add category if found
                 if category:
                     metadata["category"] = category
-                    logger.info(f"  Category: {category}")
                 
                 chunks = doc_processor.process_judgment_document(
                     file_path=str(file_path),
@@ -222,26 +243,36 @@ async def ingest_from_files(directory: str = "data/raw_documents", recursive: bo
                 for chunk in chunks:
                     all_texts.append(chunk["content"])
                     all_metadata.append(chunk)
-                
+                    
             except Exception as e:
                 logger.error(f"Error processing {file_path.name}: {str(e)}")
                 continue
+                
+            # Process in batches or at the very end
+            if len(all_texts) > 0 and ((i + 1) % BATCH_SIZE == 0 or (i + 1) == len(files)):
+                try:
+                    logger.info(f"--- BATCH EXECUTING: Generating embeddings for {len(all_texts)} accumulated chunks ---")
+                    embeddings = embedding_service.embed_texts(all_texts, batch_size=32)
+                    
+                    logger.info("Adding batch to vector store...")
+                    vector_store.add_documents(embeddings, all_metadata)
+                    
+                    logger.info("Saving index to disk to persist batch progress...")
+                    vector_store.save_index()
+                    
+                    total_chunks_processed += len(all_texts)
+                    logger.info(f"✅ Batch completed. Total chunks indexed so far: {total_chunks_processed}")
+                    
+                    # Clear memory for next batch
+                    all_texts = []
+                    all_metadata = []
+                except Exception as batch_error:
+                    logger.error(f"Failed to process batch ending at file {i+1}: {str(batch_error)}")
+                    # Intentionally don't break, try to continue with the next batch empty
+                    all_texts = []
+                    all_metadata = []
         
-        if not all_texts:
-            logger.error("No valid text extracted from files")
-            return
-        
-        # Generate embeddings
-        logger.info(f"Generating embeddings for {len(all_texts)} chunks...")
-        embeddings = embedding_service.embed_texts(all_texts, batch_size=32)
-        
-        # Add to vector store
-        vector_store.add_documents(embeddings, all_metadata)
-        
-        # Save index
-        vector_store.save_index()
-        
-        logger.info(f"✅ Ingestion complete! Processed {len(files)} files into {len(all_texts)} chunks")
+        logger.info(f"✅ Ingestion complete! Processed {len(files)} files into {total_chunks_processed} chunks")
         
     except Exception as e:
         logger.error(f"File ingestion failed: {str(e)}", exc_info=True)

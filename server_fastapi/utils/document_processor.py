@@ -181,38 +181,41 @@ class DocumentProcessor:
     
     def clean_text(self, text: str) -> str:
         """
-        Clean and normalize text.
-        
-        Args:
-            text: Raw text
-            
-        Returns:
-            Cleaned text
+        Clean and normalize text. Preserves tabular/vertical structure and removes duplicate OCR headers.
         """
-        # Remove excessive whitespace
-        text = re.sub(r'\s+', ' ', text)
+        # 1. Deduplicate repetitive OCR headers/footers (e.g., repeating case numbers across PDF pages)
+        lines = text.split('\n')
+        line_counts = {}
+        for line in lines:
+            line_str = line.strip()
+            if len(line_str) > 5:
+                line_counts[line_str] = line_counts.get(line_str, 0) + 1
+                
+        cleaned_lines = []
+        for line in lines:
+            line_str = line.strip()
+            # If a line repeats >3 times across the document, it's almost certainly OCR pagination noise
+            if len(line_str) > 5 and line_counts.get(line_str, 0) > 3:
+                continue
+            cleaned_lines.append(line)
         
-        # Remove special characters but keep legal formatting
-        # Keep: periods, commas, parentheses, dashes, colons, semicolons
-        text = re.sub(r'[^\w\s.,():\-;]', '', text)
+        text = '\n'.join(cleaned_lines)
+
+        # 2. Prevent flattening: Consolidate horizontal spaces only, safely preserving line breaks
+        text = re.sub(r'[ \t\f\v]+', ' ', text)
         
-        # Normalize line breaks
-        text = text.replace('\n\n\n', '\n\n')
+        # 3. Clean extreme vertical whitespace (compress >2 newlines into 2)
+        text = re.sub(r'\n{3,}', '\n\n', text)
         
-        # Strip leading/trailing whitespace
-        text = text.strip()
+        # 4. Remove special characters but keep legal formatting and critically preserve newlines (\n)
+        text = re.sub(r'[^\w\s.,():\-;\n]', '', text)
         
-        return text
+        return text.strip()
     
     def chunk_text(self, text: str) -> List[str]:
         """
-        Split text into overlapping chunks.
-        
-        Args:
-            text: Full text to chunk
-            
-        Returns:
-            List of text chunks
+        Split text into overlapping chunks semantically.
+        Cascades from Paragraph -> Line -> Sentence.
         """
         if len(text) <= self.chunk_size:
             return [text]
@@ -223,38 +226,61 @@ class DocumentProcessor:
         while start < len(text):
             end = start + self.chunk_size
             
-            # Find nearest sentence boundary
-            if end < len(text):
-                # Look for period followed by space
-                boundary = text.rfind('. ', start, end)
-                if boundary == -1:
-                    # No sentence boundary, use hard cutoff
-                    boundary = end
-                else:
-                    boundary += 1  # Include the period
-                
-                chunk = text[start:boundary].strip()
-            else:
+            if end >= len(text):
                 chunk = text[start:].strip()
+                if chunk:
+                    chunks.append(chunk)
+                break
+                
+            # Semantic search window (look back from 'end' to find a clean break)
+            window_text = text[start:end]
             
+            # Cascade 1: Double newline (Paragraphs)
+            boundary_offset = window_text.rfind('\n\n')
+            
+            # Cascade 2: Single newline (Tables / Lists)
+            if boundary_offset == -1 or boundary_offset < self.chunk_size // 2:
+                boundary_offset = window_text.rfind('\n')
+                
+            # Cascade 3: Sentence ending
+            if boundary_offset == -1 or boundary_offset < self.chunk_size // 2:
+                boundary_offset = window_text.rfind('. ')
+            
+            # If a boundary was found, include it in the chunk
+            if boundary_offset != -1:
+                if window_text[boundary_offset:].startswith('\n\n'):
+                    boundary_offset += 2
+                elif window_text[boundary_offset:].startswith('\n'):
+                    boundary_offset += 1
+                elif window_text[boundary_offset:].startswith('. '):
+                    boundary_offset += 2
+            else:
+                # No clean boundary, force cutoff
+                boundary_offset = len(window_text)
+                
+            chunk = text[start:start+boundary_offset].strip()
             if chunk:
                 chunks.append(chunk)
             
-            # Move start position with overlap
-            start = boundary - self.chunk_overlap if boundary - self.chunk_overlap > start else boundary
+            # Advance start pointer, applying overlap
+            next_start = start + boundary_offset - self.chunk_overlap
             
-            if end >= len(text):
-                break
-        
-        logger.info(f"Split text into {len(chunks)} chunks")
+            # Prevent infinite loops if overlap is bigger than the identified boundary chunk
+            if next_start <= start:
+                next_start = start + boundary_offset
+                
+            start = next_start
+            
+        logger.info(f"Semantically split text into {len(chunks)} chunks")
         return chunks
     
-    def extract_judgment_metadata(self, text: str) -> Dict[str, Any]:
+    def extract_judgment_metadata(self, text: str, filename: str = "") -> Dict[str, Any]:
         """
         Extract metadata from judgment text using pattern matching.
         
         Args:
             text: Judgment text
+            filename: Source filename for additional pattern matching
             
         Returns:
             Dict with extracted metadata
@@ -264,8 +290,19 @@ class DocumentProcessor:
             "parties": None,
             "court": None,
             "date": None,
-            "judges": None
+            "judges": None,
+            "lawyers": None,
+            "journal": None,
+            "year": None
         }
+        
+        # Parse filename if it looks like EasyLaw_1955_PLD_1_ID.pdf
+        if filename:
+            file_match = re.search(r'(?:EasyLaw_)?(\d{4})_([A-Za-z_]+)_(\d+)', filename, re.IGNORECASE)
+            if file_match:
+                metadata["year"] = file_match.group(1)
+                metadata["journal"] = file_match.group(2).replace('_', ' ')
+                metadata["case_number"] = file_match.group(3)
         
         # Extract case number (various patterns)
         case_patterns = [
@@ -312,7 +349,56 @@ class DocumentProcessor:
             if match:
                 metadata["date"] = match.group(1).strip()
                 break
+                
+        # Extract Judge(s)
+        judge_patterns = [
+            r'Before\s+[:]?\s*([^,\n]+)',
+            r'PRESENT:\s+([^,\n]+)',
+            r'Coram[:]?\s*([^,\n]+)'
+        ]
+        for pattern in judge_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                val = match.group(1).strip()
+                # Exclude if it looks like a date or unrelated
+                if len(val) < 50 and "court" not in val.lower():
+                    metadata["judges"] = val
+                    break
+
+        # Extract Lawyers
+        lawyer_patterns = [
+            r'For the Appellants?[:]?\s*([^,\n]+)',
+            r'For the Respondents?[:]?\s*([^,\n]+)',
+            r'Counsel for.+?[:]\s*([^,\n]+)'
+        ]
+        lawyers = []
+        for pattern in lawyer_patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                val = match.group(1).strip()
+                if len(val) < 50:
+                    lawyers.append(val)
+        if lawyers:
+            metadata["lawyers"] = " | ".join(lawyers)
+            
+        # Construct standard title: [Parties], [Year] [Journal] [Case/Page] ([Court])
+        parties = metadata["parties"] or "Unknown v. Unknown"
+        year = metadata["year"] or metadata["date"] or "Unknown Year"
+        # Only use year if it exists as 4 digits
+        if year and len(str(year)) > 4:
+            year_match = re.search(r'\d{4}', str(year))
+            year = year_match.group(0) if year_match else "Unknown Year"
         
+        journal = metadata["journal"] or ""
+        case_no = metadata["case_number"] or ""
+        court = metadata["court"] or "Unknown Court"
+        
+        citation = f"{year} {journal} {case_no}".replace("  ", " ").strip()
+        if citation:
+            metadata["title"] = f"{parties}, {citation} ({court})"
+        else:
+            metadata["title"] = f"{parties} ({court})"
+            
         return metadata
     
     def process_judgment_document(
@@ -344,11 +430,18 @@ class DocumentProcessor:
         cleaned_text = self.clean_text(text)
         
         # Extract metadata from text
-        extracted_metadata = self.extract_judgment_metadata(cleaned_text)
+        filename = metadata.get("source_file", "") if metadata else ""
+        extracted_metadata = self.extract_judgment_metadata(cleaned_text, filename=filename)
         
         # Merge with provided metadata
+        # Prioritize the dynamically formatted title if parties were found.
+        has_extracted_parties = "parties" in extracted_metadata and "Unknown v. Unknown" not in extracted_metadata["title"]
+        
         if metadata:
+            original_title = metadata.pop("title", None)
             extracted_metadata.update(metadata)
+            if not has_extracted_parties and original_title:
+                extracted_metadata["title"] = original_title
         
         # Chunk text
         chunks = self.chunk_text(cleaned_text)

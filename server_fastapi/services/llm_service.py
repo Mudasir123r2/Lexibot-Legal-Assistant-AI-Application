@@ -3,370 +3,109 @@ LLM Service using Cerebras API
 Provides fast inference for legal question answering and text generation.
 """
 
-from langchain_community.chat_models import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from typing import List, Dict, Optional
+import json
 import logging
+import re
 import time
+from typing import List, Dict, Optional, Any
+
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+# ==============================================================================
+# PROMPTS & CONFIGURATION
+# ==============================================================================
 
-class LLMService:
-    """
-    Service for LLM-powered text generation using Cerebras API.
-    
-    Cerebras provides extremely fast inference for Llama models:
-    - Llama 3.1 8B - Excellent for rapid generation
-    
-    Benefits of Cerebras:
-    - Fast inference on specialized hardware
-    - Large context window capabilities
-    - Great for legal/technical text understanding
-    """
-    
-    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
-        """
-        Initialize LLM service.
-        
-        Args:
-            api_key: Cerebras API key (from env if not provided)
-            model: Model name to use
-        """
-        self.api_key = api_key or settings.CEREBRAS_API_KEY
-        self.model = model or settings.LLM_MODEL
-        self.base_url = settings.CEREBRAS_BASE_URL
-        self.max_tokens = settings.MAX_TOKENS
-        self.client = None
-        
-        if not self.api_key or self.api_key == "your_cerebras_api_key_here":
-            logger.warning("⚠️  Cerebras API key not configured. LLM features will use fallback responses.")
-        else:
-            self._initialize_client()
-    
-    def _initialize_client(self):
-        """Initialize Cerebras client using LangChain API."""
-        try:
-            # Initialize minimal LangChain ChatOpenAI object just to test config
-            self.lc_llm = ChatOpenAI(
-                openai_api_key=self.api_key,
-                openai_api_base=self.base_url,
-                model_name=self.model,
-                max_tokens=2048
-            )
-            logger.info(f"✅ Cerebras LangChain initialized with model: {self.model}")
-        except Exception as e:
-            logger.error(f"Failed to initialize LangChain client: {str(e)}")
-            self.lc_llm = None
-    
-    def generate_response(
-        self,
-        prompt: str,
-        system_prompt: Optional[str] = None,
-        max_tokens: int = 1024,
-        temperature: float = 0.3
-    ) -> str:
-        """
-        Generate a response from the LLM.
-        
-        Args:
-            prompt: User prompt/question
-            system_prompt: System instructions for the model
-            max_tokens: Maximum tokens in response (max: 65536)
-            temperature: Sampling temperature (0-1, lower = more focused)
-            
-        Returns:
-            Generated text response
-        """
-        if not hasattr(self, 'lc_llm') or not self.lc_llm:
-            return self._fallback_response(prompt)
-        
-        try:
-            # Ensure max_tokens doesn't exceed context window
-            safe_max_tokens = min(max_tokens, 2048)
-            
-            # Orchestrate Generation via LangChain PromptTemplates
-            if system_prompt:
-                chat_template = ChatPromptTemplate.from_messages([
-                    ("system", "{system_prompt}"),
-                    ("user", "{user_prompt}")
-                ])
-                messages = chat_template.format_messages(
-                    system_prompt=system_prompt,
-                    user_prompt=prompt
-                )
-            else:
-                chat_template = ChatPromptTemplate.from_messages([
-                    ("user", "{user_prompt}")
-                ])
-                messages = chat_template.format_messages(
-                    user_prompt=prompt
-                )
-                
-            # Create a dynamic sequence chain for this targeted run
-            chain_llm = ChatOpenAI(
-                openai_api_key=self.api_key,
-                openai_api_base=self.base_url,
-                model_name=self.model,
-                max_tokens=safe_max_tokens,
-                temperature=temperature,
-                max_retries=0 # We will handle retries via the application logger
-            )
-            
-            max_retries = 3
-            retry_delay = 2  # seconds
-            
-            for attempt in range(max_retries):
-                try:
-                    # Execute LangChain Runnable Sequence
-                    response = chain_llm.invoke(messages)
-                    return response.content
-                    
-                except Exception as api_error:
-                    error_str = str(api_error)
-                    
-                    # Check for rate limit errors
-                    if "429" in error_str or "rate_limit" in error_str.lower() or "quota" in error_str.lower():
-                        if attempt < max_retries - 1:
-                            wait_time = retry_delay * (2 ** attempt)  # exponential backoff
-                            logger.warning(f"⏳ Rate limit hit, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
-                            time.sleep(wait_time)
-                            continue
-                        else:
-                            logger.error(f"❌ Rate limit exceeded after {max_retries} retries")
-                            return "I apologize, but I'm currently experiencing high demand and have reached my usage limit. Please try again in a few moments. If this persists, the system administrator may need to upgrade the API quota."
-                    else:
-                        # Other errors, raise immediately
-                        raise api_error
-            
-        except Exception as e:
-            logger.error(f"Error generating LLM response: {str(e)}")
-            
-            # Provide user-friendly error messages
-            error_str = str(e)
-            if "429" in error_str or "quota" in error_str.lower():
-                return "I apologize, but I've reached my token usage limit for now. Please wait a few moments and try again. Consider asking shorter questions or the administrator may need to upgrade the API quota."
-            elif "timeout" in error_str.lower():
-                return "Request timed out."
-            else:
-                return self._fallback_response(prompt)
-    
-    def generate_with_context(
-        self,
-        query: str,
-        context_documents: List[Dict],
-        max_tokens: int = 1024,
-        temperature: float = 0.3,
-        user_role: str = "client"
-    ) -> str:
-        """
-        Generate response using retrieved context documents (RAG).
-        
-        Args:
-            query: User question
-            context_documents: List of retrieved documents with 'content' field
-            max_tokens: Maximum tokens in response
-            temperature: Sampling temperature
-            user_role: User's role (client/advocate/admin) for tailored responses
-            
-        Returns:
-            Generated answer based on context
-        """
-        # Build context from retrieved documents with proper titles and citations
-        context_parts = []
-        for i, doc in enumerate(context_documents[:5]):
-            category = str(doc.get('category', 'judgment'))[:50]
-            title = str(doc.get('title', 'Untitled'))[:200]
-            citation = str(doc.get('citation', ''))[:100]
-            court = str(doc.get('court', ''))[:100]
-            date = str(doc.get('date', ''))[:50]
-            parties = str(doc.get('parties', ''))[:200]
-            
-            # Determine document type
-            is_law = category.lower() in ['laws', 'legal provisions', 'statute', 'legislation']
-            doc_type = "Legal Provision" if is_law else "Case Judgment"
-            
-            # Build a more descriptive case name
-            # If title is just a number or case number, and we have parties, use parties
-            case_name = title
-            if parties and (title.isdigit() or len(title) < 10 or 'WP-No' in title or 'W.P.No' in title):
-                case_name = f"{parties} [{title}]" if title != 'Untitled' else parties
-            
-            # Build header with actual case name/title
-            header = f"[{doc_type}] {case_name}"
-            if citation and citation not in case_name:
-                header += f" (Citation: {citation})"
-            if court:
-                header += f" | Court: {court}"
-            if date:
-                header += f" | Date: {date}"
-            
-            content = doc.get('content', '')
-            if len(content) > 1500:
-                content = content[:1500] + "... [Content truncated for length]"
-                
-            context_parts.append(f"{header}\n\nContent:\n{content}")
-        
-        separator = "\n\n" + "=" * 80 + "\n\n"
-        context_text = separator.join(context_parts)
-        
-        # Role-specific system prompts
-        if user_role == "advocate":
-            system_prompt = """You are LexiBot, an AI legal assistant specializing in Pakistani law for legal professionals.
+MAX_RETRIES = 3
+RETRY_DELAY_SEC = 2
+SAFE_MAX_TOKENS = 2048
 
-Your role for ADVOCATES:
-- Provide detailed legal analysis with technical precision
-- Cite cases by their actual names/titles, NOT as "Case Judgment 1" or "Legal Provision 1"
-- Include specific citations, court names, and dates when available
-- Reference both statutory law and case law comprehensively
-- Use formal legal terminology appropriately
-- Highlight procedural requirements and legal strategies
-- Provide comparative analysis of similar cases
+SYSTEM_PROMPT_ADVOCATE = """You are a Legal Document Formatter for a RAG-based legal research system.
+Your task is to standardize and clean legal judgment names and metadata strictly referencing Easy Law judgments.
 
-Citation Format:
-- Good: "In Mst. Ayesha v. Muhammad Ali (2020, Lahore High Court)..."
-- Bad: "According to Case Judgment 1..."
+--------------------------------------
+🚨 STRICT RULES
+--------------------------------------
+1. NEVER use internal system names.
+2. Judgment names MUST be constructed ONLY from: Citation / Reporter and Court Name.
+3. IF CITATION/COURT IS MISSING: Extract it from the raw OCR text.
+4. ONLY write "Not available in provided text" if the info is COMPLETELY MISSING.
 
-Response Style:
-- Write in a professional, conversational tone
-- Use clear paragraphs, not bullet points unless listing items
-- Integrate citations naturally into your analysis
-- Provide context before citing cases
-- End with a "Sources:" section listing actual case identifiers (never use "Case Judgment 1", etc.)
+Return ONLY the structured format:
+### Case Title
+### Court
+### Date
+### Citation / Appeal No.
+### Parties
+### Facts
+### Issues
+### Decision / Holding
+### Statutes & Relevant Law
+### Inconsistencies
+"""
 
-Example Sources Format:
-Sources:
-- Mst. Ayesha v. Muhammad Rashid [WP-No.123-2020], Lahore High Court
-- 2023 PLD 456, Supreme Court of Pakistan
+SYSTEM_PROMPT_CLIENT = """You are LexiBot, an AI legal assistant specializing in Pakistani law.
+Answer legal questions focusing on Easy Law judgments using ONLY the provided context.
 
-Important:
-- Only answer based on the provided context
-- Clearly distinguish between case law (judgments) and statutory law (legal provisions)
-- Never fabricate case references or legal provisions
-- If context is insufficient, say so clearly"""
-        else:  # client or default
-            system_prompt = """You are LexiBot, an AI legal assistant specializing in Pakistani law for clients.
+Rules:
+- Explain concepts simply.
+- Cite cases by ACTUAL NAMES not generic identifiers.
+- Provide practical implications.
+- Create a "Sources:" section listing actual case identifiers.
+"""
 
-Your role for CLIENTS:
-- Explain legal concepts in simple, clear language
-- Cite cases by their actual names, NOT as "Case Judgment 1" or "Legal Provision 1"
-- Avoid excessive legal jargon; explain technical terms when used
-- Focus on practical implications and actionable steps
-- Provide context about rights and obligations
-- Use examples to clarify complex concepts
+SYSTEM_PROMPT_SUMMARY = """You are a Legal Document Summarizer specializing in Pakistani judgments.
+Process via 5 steps: Analysis, Pre-summarization, Abstractive Summarization, Plain Language Conversion, Length Control.
 
-Citation Format:
-- Good: "In a similar case, Mst. Ayesha v. Muhammad Ali (2020), the Lahore High Court ruled that..."
-- Bad: "According to Case Judgment 1..."
-
-Response Style:
-- Write in a friendly, conversational tone
-- Use clear paragraphs to explain concepts
-- Integrate case examples naturally into your explanation
-- Avoid repetitive phrasing
-- End with a "Sources:" section listing actual case identifiers (never use "Case Judgment 1", etc.)
-
-Example Sources Format:
-Sources:
-- Mst. Ayesha v. Muhammad Rashid [WP-No.123-2020], Lahore High Court
-- 2023 PLD 456, Supreme Court of Pakistan
-
-Important:
-- Only answer based on the provided context
-- Make it clear when you're citing a court decision vs. a law/regulation
-- Never make up case references or legal requirements
-- Recommend consulting a lawyer for specific legal advice"""
-
-        prompt = f"""Context from Legal Database:
-{context_text}
-
-User Question: {query}
-
-Critical Instructions:
-1. FOCUS ON LEGAL QUESTIONS: Answer the user's question based ONLY on the context provided above. If the context doesn't contain sufficient information, say so clearly. Do not hallucinate or make up legal facts.
-
-2. AVOID GENERIC CITATIONS: Never use generic references like "Case Judgment 1" or "Legal Provision 1".
-
-3. CITATION FORMAT: ALWAYS cite by the actual case name/identifier from the headers above (e.g., "In WP-No.282-B-2012...", "The case of 2023 PLD 456...").
-
-4. STYLE: Write naturally and concisely. Integrate case references seamlessly into your sentences. Do not introduce yourself in every message.
-
-5. SOURCES SECTION: In your Sources section at the end, list ONLY the actual case names/numbers with courts."""
-
-        return self.generate_response(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            max_tokens=max_tokens,
-            temperature=temperature
-        )
-    
-    def summarize_judgment(
-        self,
-        judgment_text: str,
-        max_tokens: int = 512
-    ) -> str:
-        """
-        Generate a summary of a legal judgment.
-        
-        Args:
-            judgment_text: Full text of the judgment
-            max_tokens: Maximum tokens in summary
-            
-        Returns:
-            Concise summary
-        """
-        system_prompt = """You are a highly advanced Legal Document Summarizer. 
-You MUST process the judgment through the following 5-step pipeline internally before generating your final output:
-1. Document Analysis: Identify the structural components and key headers.
-2. Extractive Pre-summarization: Extract the most critical sentences defining the core facts.
-3. Abstractive Summarization: Transform these extractions into a coherent, high-level narrative.
-4. Plain Language Conversion: Convert all complex technical legalese into easily comprehensible language.
-5. Length Control: Ensure the final output is bounded, concise, and structured.
-
-Final Output Format Required:
+Target Format:
 - Case Title & Citation
 - Key Parties Involved
 - Main Legal Issues
 - Court's Decision/Ruling
 - Important Legal Principles Established
 - Key Precedents Cited
+"""
 
-Generate only the final plain-language summary."""
+SYSTEM_PROMPT_OCR_CLEAN = """You are a Senior Legal Data Engineer and Pakistani Law Expert.
+Your task is to VALIDATE, CLEAN, and CORRECT a structured legal judgment. Ensure legal data integrity and consistency.
 
-        prompt = f"""Summarize the following legal judgment:
+🚨 CRITICAL RULES (STRICT):
+1. PRESERVE ORIGINAL MEANING & HEAL OCR: Fix formatting, grammar, and typos. Aggressively fix OCR artifacts where words/names are improperly spaced or capitalized (e.g., "bish art" -> "Bisharat", "A D V O C A T E" -> "Advocate", "Pesha War" -> "Peshawar", "MUR TAZA" -> "Murtaza", "P AKIST AN" -> "Pakistan", repairing ALL judge/lawyer/place names).
+2. DO NOT ADD NEW LEGAL CONCEPTS: DO NOT introduce legal doctrines not present in the case (e.g., Khula in dower cases, restitution in custody cases). If a concept is NOT explicitly supported by facts/issue/reasoning -> REMOVE IT.
+3. HOLDING MUST BE 100% CONSISTENT: The HOLDING must strictly match Facts, Issue, and Reasoning. Delete unrelated legal doctrines. Include clear legal doctrine labels/tags in the holding (e.g., [Khula without consent], [No restitution unless proved]).
+4. REMOVE RAG CONTAMINATION & DEDUPLICATE: If multiple legal topics appear, identify the primary legal issue and remove unrelated secondary doctrines. Deduplicate all repeated information from overlapping FAISS chunks. Remove redundant "conclusion" sections if "HOLDING" is present.
+5. STANDARDIZE FORMATTING:
+   - Case Title: "Party A v. Party B (Appeal/Writ No. 123 of 2000)". Do NOT use square brackets.
+   - Citation: Format as YYYY PLD XXX (Court).
+   - Court: Must be specific (e.g., Lahore High Court). PLD/SCMR/YLR typically belong to High Courts or Supreme Court. If text says District Court but citation is PLD, correct to High Court.
+   - Dates: Decision Date and Citation Reporter Year may differ. Standardize and resolve mismatches.
+   - Statutes: Consolidate and formalize statutes without duplication (e.g., "West Pakistan Family Courts Act, 1964").
+6. PARTY CONFUSION: If multiple unrelated cases appear merged due to OCR, clearly label consolidated proceedings or split them.
+7. ISSUE & REASONING: Frame issues legally and comprehensively, avoiding over-simplification. Ensure reasoning flows structurally without repetitive circular logic.
+8. STRICT HEADERS: Use exact headers in ALL CAPS. DO NOT use markdown bolding (**), asterisks (*), or hashtags. Output plain text headers only.
+9. SEPARATE LINES: Put JUDGES: and LAWYERS: entirely on separate lines. They MUST NEVER be on the same line.
+10. NO COMMENTARY: Output ONLY the corrected judgment in the strict format below.
 
-{judgment_text[:5000]}  
+CASE TITLE:
+CITATION:
+COURT:
+DATE OF DECISION:
+JUDGES:
+LAWYERS:
+STATUTES:
 
-Provide a concise, plain-language, and comprehensive summary conforming strictly to the structured pipeline."""
+FACTS:
+ISSUE:
+REASONING:
+HOLDING:
+"""
 
-        return self.generate_response(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            max_tokens=max_tokens,
-            temperature=0.2
-        )
-    
-    def extract_case_info(self, judgment_text: str) -> Dict[str, str]:
-        """
-        Extract structured information from a judgment.
-        
-        Args:
-            judgment_text: Full judgment text
-            
-        Returns:
-            Dict with extracted fields
-        """
-        system_prompt = """You are an advanced Legal Information Extraction model. 
-You must analyze the text and strictly extract structured data following this 5-stage taxonomy:
-1. Entity Recognition: Names of all individuals, companies, and courts.
-2. Date Extraction: Key dates, deadlines, hearing schedules, and judgments.
-3. Obligation Extraction: Legal duties, penalties, directions, or mandates ordered by the court.
-4. Citation Extraction: Identifiers for past case precedents or statutory laws invoked.
-5. Relationship Extraction: The structural relationship between entities (e.g., Appellant vs Respondent).
-
-Output pure JSON matching the exact keys below:
+SYSTEM_PROMPT_EXTRACTION = """You are an advanced Legal Information Extraction model.
+Output pure JSON matching this exact structure:
 {
   "entities": {"parties": [], "court": ""},
   "dates": {"judgment_date": "", "deadlines": []},
@@ -379,68 +118,185 @@ Output pure JSON matching the exact keys below:
   "key_issues": []
 }"""
 
-        prompt = f"""Extract structured information and metadata from this judgment:
 
-{judgment_text[:4000]}
+# ==============================================================================
+# CORE LLM SERVICE
+# ==============================================================================
 
-Respond ONLY with a valid JSON object following the required taxonomy scheme."""
-
-        try:
-            response = self.generate_response(
-                prompt=prompt,
-                system_prompt=system_prompt,
-                max_tokens=512,
-                temperature=0.1
-            )
-            
-            # Try to parse JSON from response
-            import json
-            # Extract JSON from potential markdown code blocks
-            response_clean = response.strip()
-            if response_clean.startswith("```"):
-                response_clean = response_clean.split("```")[1]
-                if response_clean.startswith("json"):
-                    response_clean = response_clean[4:]
-            
-            return json.loads(response_clean.strip())
-        except:
-            return {"error": "Could not extract information"}
-    
-    def _fallback_response(self, query: str) -> str:
-        """
-        Provide fallback response when LLM is unavailable.
+class LLMService:
+    def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
+        self.api_key = api_key or settings.CEREBRAS_API_KEY
+        self.model = model or settings.LLM_MODEL
+        self.base_url = getattr(settings, "CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
+        self.max_tokens = getattr(settings, "MAX_TOKENS", 1024)
+        self.lc_llm = None
         
-        Args:
-            query: User query
+        if not self.api_key or self.api_key == "your_cerebras_api_key_here":
+            logger.warning("⚠️ Cerebras API key not configured. Using fallback responses.")
+        else:
+            self._initialize_client()
             
-        Returns:
-            Fallback message
-        """
-        return """I apologize, but the AI service is currently unavailable. 
+    def _initialize_client(self):
+        try:
+            self.lc_llm = ChatOpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                model=self.model,
+                max_tokens=SAFE_MAX_TOKENS,
+                temperature=0.3,
+                max_retries=0
+            )
+            logger.info(f"✅ Cerebras LangChain initialized with model: {self.model}")
+        except Exception as e:
+            logger.error(f"Failed to initialize LangChain client: {str(e)}")
+            self.lc_llm = None
 
-This could be because:
-- The Cerebras API key is not configured
-- There's a temporary connection issue
-- Rate limits have been reached
+    def generate_response(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 1024,
+        temperature: float = 0.3
+    ) -> str:
+        if not self.lc_llm:
+            return self._fallback_response(prompt)
+            
+        safe_tokens = min(max_tokens, SAFE_MAX_TOKENS)
+        
+        messages = []
+        if system_prompt:
+            messages.append(("system", system_prompt))
+        messages.append(("user", prompt))
+            
+        chat_template = ChatPromptTemplate.from_messages(messages)
+        formatted_messages = chat_template.format_messages()
+        
+        # We temporarily override params just for this request
+        chain_llm = self.lc_llm.bind(max_tokens=safe_tokens, temperature=temperature)
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                response = chain_llm.invoke(formatted_messages)
+                return response.content
+            except Exception as e:
+                error_str = str(e)
+                logger.error(f"LLM API ERROR: {error_str}")
+                
+                is_rate_limit = any(k in error_str.lower() for k in ["429", "rate_limit", "quota"])
+                if is_rate_limit and attempt < MAX_RETRIES - 1:
+                    wait_time = RETRY_DELAY_SEC * (2 ** attempt)
+                    logger.warning(f"⏳ Rate limit hit, retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+                elif is_rate_limit:
+                    return ("I apologize, but I'm currently experiencing high demand and have reached my usage limit. "
+                            "Please try again in a few moments.")
+                else:
+                    if "timeout" in error_str.lower():
+                        return "Request timed out."
+                    return self._fallback_response(prompt)
+                    
+        return self._fallback_response(prompt)
 
-Please:
-1. Check if CEREBRAS_API_KEY is set in your .env file
-2. Verify your API key at the Cerebras dashboard
-3. Try again in a moment
+    # ==============================================================================
+    # DOMAIN SPECIFIC METHODS
+    # ==============================================================================
 
-In the meantime, you can browse judgments using the search feature."""
+    def generate_with_context(
+        self,
+        query: str,
+        context_documents: List[Dict[str, Any]],
+        max_tokens: int = 1024,
+        temperature: float = 0.3,
+        user_role: str = "client"
+    ) -> str:
+        context_parts = []
+        for doc in context_documents[:5]:
+            title = str(doc.get('title', 'Untitled'))[:200]
+            citation = str(doc.get('citation', ''))[:100]
+            court = str(doc.get('court', ''))[:100]
+            date = str(doc.get('date', ''))[:50]
+            parties = str(doc.get('parties', ''))[:200]
+            
+            case_name = title
+            if parties and (title.isdigit() or len(title) < 10 or 'WP-No' in title):
+                case_name = f"{parties} [{title}]" if title != 'Untitled' else parties
+                
+            header = f"[Easy Law Judgment] {case_name}"
+            if citation and citation not in case_name:
+                header += f" (Citation: {citation})"
+            if court:
+                header += f" | Court: {court}"
+            if date:
+                header += f" | Date: {date}"
+                
+            content = doc.get('content', '')
+            if len(content) > 32000:
+                content = content[:32000] + "... [Content truncated]"
+                
+            # Wrap context securely to prevent prompt injection
+            context_parts.append(f"{header}\n\n```text\n{content}\n```")
+            
+        context_text = "\n\n" + "=" * 80 + "\n\n".join(context_parts)
+        
+        system_prompt = SYSTEM_PROMPT_ADVOCATE if user_role == "advocate" else SYSTEM_PROMPT_CLIENT
+        prompt = f"CONTEXT DOCUMENTS:\n{context_text}\n\nUSER QUESTION: {query}"
+        
+        return self.generate_response(prompt, system_prompt, max_tokens, temperature)
 
+    def summarize_judgment(self, judgment_text: str, max_tokens: int = 512) -> str:
+        prompt = f"Summarize the following legal judgment:\n\n```text\n{judgment_text[:30000]}\n```"
+        response = self.generate_response(prompt, SYSTEM_PROMPT_SUMMARY, max_tokens, temperature=0.2)
+        if response.startswith("I apologize") or response.startswith("Request timed out"):
+            return "Summary currently unavailable due to AI service disruption."
+        return response
 
-# Singleton instance
+    def clean_ocr_text(self, dirty_text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+        # Pre-process common OCR artifacts deterministically before LLM to save tokens / ensure accuracy
+        import re
+        dirty_text = re.sub(r'(?i)\bp\s*esha\s*war\b', 'Peshawar', dirty_text)
+        dirty_text = re.sub(r'(?i)\bp\s*akist\s*an\b', 'Pakistan', dirty_text)
+        dirty_text = re.sub(r'(?i)\bmur\s*taza\b', 'Murtaza', dirty_text)
+        dirty_text = re.sub(r'(?i)\bbish\s*art\b', 'Bisharat', dirty_text)
+        
+        metadata = metadata or {}
+        known_meta_str = "\n".join([f"{k}: {v}" for k, v in metadata.items() if v])
+        
+        prompt = f"KNOWN METADATA:\n{known_meta_str}\n\nRAW OCR TEXT:\n```text\n{dirty_text}\n```"
+        
+        response = self.generate_response(prompt, SYSTEM_PROMPT_OCR_CLEAN, max_tokens=4000, temperature=0.1)
+        if response.startswith("I apologize") or response.startswith("Request timed out"):
+            return dirty_text
+        return response
+
+    def extract_case_info(self, judgment_text: str) -> Dict[str, Any]:
+        fallback_json = {
+            "entities": {"parties": [], "court": ""},
+            "dates": {"judgment_date": "", "deadlines": []},
+            "obligations": [], "citations": [], "relationships": [],
+            "case_number": "", "case_type": "", "outcome": "", "key_issues": []
+        }
+        
+        prompt = f"Extract structured info from:\n\n```text\n{judgment_text[:20000]}\n```"
+        response = self.generate_response(prompt, SYSTEM_PROMPT_EXTRACTION, max_tokens=1024, temperature=0.1)
+        
+        try:
+            # Extract via regex to avoid markdown artifacts
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(0))
+            return json.loads(response)
+        except Exception as e:
+            logger.warning(f"Failed to parse JSON extraction: {e}")
+            return fallback_json
+
+    def _fallback_response(self, query: str) -> str:
+        return ("I apologize, but the AI service is currently unavailable. "
+                "Please verify the Cerebras API Key, check constraints, or try again later.")
+
+# Singleton Instance
 _llm_service = None
 
 def get_llm_service() -> LLMService:
-    """
-    Get or create singleton LLM service instance.
-    
-    Returns:
-        LLMService instance
-    """
     global _llm_service
     if _llm_service is None:
         _llm_service = LLMService()

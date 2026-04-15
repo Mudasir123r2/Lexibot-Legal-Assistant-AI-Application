@@ -27,6 +27,10 @@ class JudgmentBase(BaseModel):
     jurisdiction: Optional[str] = None
     year: Optional[int] = None
     tags: List[str] = []
+    journal: Optional[str] = None
+    parties: Optional[str] = None
+    lawyers: Optional[str] = None
+    statutes: Optional[str] = None
 
 class JudgmentCreate(JudgmentBase):
     keyInformation: Optional[KeyInformation] = None
@@ -60,10 +64,10 @@ class JudgmentInDB(JudgmentBase):
 
 class JudgmentResponse(JudgmentBase):
     id: str = Field(alias="_id")
-    keyInformation: KeyInformation
+    keyInformation: KeyInformation = Field(default_factory=KeyInformation)
     referencedCases: List[str] = []
-    createdAt: datetime
-    updatedAt: datetime
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
         populate_by_name = True

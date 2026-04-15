@@ -1,3 +1,9 @@
+import sys
+import io
+# Force UTF-8 output on Windows to prevent emoji/unicode print errors
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+
 from motor.motor_asyncio import AsyncIOMotorClient
 from config.settings import settings
 

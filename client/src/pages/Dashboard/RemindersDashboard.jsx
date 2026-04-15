@@ -1,13 +1,17 @@
 import DashboardLayout from "../../layout/DashboardLayout";
 import { useState, useEffect } from "react";
-import { FaPlus, FaCheckCircle, FaTimesCircle, FaCalendar, FaExclamationTriangle } from "react-icons/fa";
-import { FiLoader } from "react-icons/fi";
+import { FaPlus, FaCheckCircle, FaTimes, FaCalendarAlt, FaExclamationCircle, FaRegClock, FaTrash, FaCheck } from "react-icons/fa";
+import { FiLoader, FiAlertCircle } from "react-icons/fi";
 import api from "../../api/http";
 
 export default function RemindersDashboard() {
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [cases, setCases] = useState([]);
+  
+  // Drawer States
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -15,7 +19,6 @@ export default function RemindersDashboard() {
     priority: "medium",
     caseId: ""
   });
-  const [cases, setCases] = useState([]);
 
   useEffect(() => {
     fetchReminders();
@@ -43,6 +46,21 @@ export default function RemindersDashboard() {
     }
   };
 
+  const openDrawer = () => {
+    setFormData({
+      title: "",
+      description: "",
+      dueDate: "",
+      priority: "medium",
+      caseId: ""
+    });
+    setIsDrawerOpen(true);
+  };
+
+  const closeDrawer = () => {
+    setIsDrawerOpen(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -50,14 +68,7 @@ export default function RemindersDashboard() {
         ...formData,
         caseId: formData.caseId || undefined
       });
-      setShowModal(false);
-      setFormData({
-        title: "",
-        description: "",
-        dueDate: "",
-        priority: "medium",
-        caseId: ""
-      });
+      closeDrawer();
       fetchReminders();
     } catch (err) {
       console.error("Error creating reminder:", err);
@@ -75,7 +86,7 @@ export default function RemindersDashboard() {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure you want to delete this reminder?")) return;
+    if (!window.confirm("Are you critically sure you want to permanently delete this reminder?")) return;
     try {
       await api.delete(`/reminders/${id}`);
       fetchReminders();
@@ -84,12 +95,12 @@ export default function RemindersDashboard() {
     }
   };
 
-  const getPriorityColor = (priority) => {
+  const getPriorityStyle = (priority) => {
     switch (priority) {
-      case "urgent": return "bg-rose-500/20 text-rose-400 border-rose-500/30";
-      case "high": return "bg-orange-500/20 text-orange-400 border-orange-500/30";
-      case "medium": return "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
-      default: return "bg-blue-500/20 text-blue-400 border-blue-500/30";
+      case "urgent": return "bg-rose-500 text-white shadow-[0_0_10px_rgba(244,63,94,0.5)]";
+      case "high": return "bg-orange-500 text-white";
+      case "medium": return "bg-amber-500/20 text-amber-500";
+      default: return "bg-blue-500/20 text-blue-400";
     }
   };
 
@@ -97,261 +108,266 @@ export default function RemindersDashboard() {
     return new Date(dueDate) < new Date() && new Date(dueDate).toDateString() !== new Date().toDateString();
   };
 
-  const isUpcoming = (dueDate) => {
-    const daysUntil = Math.ceil((new Date(dueDate) - new Date()) / (1000 * 60 * 60 * 24));
-    return daysUntil >= 0 && daysUntil <= 3;
+  const isDueToday = (dueDate) => {
+    return new Date(dueDate).toDateString() === new Date().toDateString();
   };
 
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="min-h-[60dvh] grid place-items-center">
-          <FiLoader className="h-12 w-12 text-indigo-500 animate-spin" />
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  const upcomingReminders = reminders.filter(r => !r.isCompleted && (isUpcoming(r.dueDate) || isOverdue(r.dueDate)));
+  const upcomingReminders = reminders.filter(r => !r.isCompleted && (isDueToday(r.dueDate) || isOverdue(r.dueDate)));
   const completedReminders = reminders.filter(r => r.isCompleted);
-  const otherReminders = reminders.filter(r => !r.isCompleted && !isUpcoming(r.dueDate) && !isOverdue(r.dueDate));
+  const otherReminders = reminders.filter(r => !r.isCompleted && !isDueToday(r.dueDate) && !isOverdue(r.dueDate));
+
+  const stats = {
+    overdue: reminders.filter(r => !r.isCompleted && isOverdue(r.dueDate)).length,
+    dueToday: reminders.filter(r => !r.isCompleted && isDueToday(r.dueDate)).length,
+    active: reminders.filter(r => !r.isCompleted).length
+  };
 
   return (
     <DashboardLayout>
-      <div className="relative">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-white">Reminders</h1>
+      <div className="relative w-full h-full flex flex-col px-2 font-sans overflow-hidden">
+        
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 shrink-0 gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-1 tracking-tight">Timeline Agenda</h1>
+            <p className="text-slate-400 text-sm">Manage critical case deadlines, filings, and urgent tasks.</p>
+          </div>
           <button
-            onClick={() => setShowModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+            onClick={() => openDrawer()}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-[0_0_15px_rgba(79,70,229,0.3)] transition-all"
           >
-            <FaPlus /> New Reminder
+            <FaPlus /> New Deadline
           </button>
         </div>
 
-        {/* Upcoming/Overdue */}
-        {upcomingReminders.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
-              <FaExclamationTriangle className="text-yellow-500" />
-              Upcoming / Overdue
+        {/* Top Metric Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0 mb-8">
+           <div className="bg-rose-500/10 rounded-2xl p-6 ring-1 ring-rose-500/20 border border-black backdrop-blur-sm relative overflow-hidden flex items-center justify-between">
+              <div className="absolute top-0 right-0 p-4 opacity-10"><FiAlertCircle className="text-8xl text-rose-500" /></div>
+              <div>
+                <p className="text-rose-400 text-sm font-bold uppercase tracking-wider mb-1">Overdue Items</p>
+                <h3 className="text-4xl font-bold text-white">{stats.overdue}</h3>
+              </div>
+           </div>
+           <div className="bg-amber-500/10 rounded-2xl p-6 ring-1 ring-amber-500/20 border border-black backdrop-blur-sm relative overflow-hidden flex items-center justify-between">
+              <div className="absolute top-0 right-0 p-4 opacity-10"><FaRegClock className="text-8xl text-amber-500" /></div>
+              <div>
+                <p className="text-amber-400 text-sm font-bold uppercase tracking-wider mb-1">Due Today</p>
+                <h3 className="text-4xl font-bold text-white">{stats.dueToday}</h3>
+              </div>
+           </div>
+           <div className="bg-indigo-500/10 rounded-2xl p-6 ring-1 ring-indigo-500/20 border border-black backdrop-blur-sm relative overflow-hidden flex items-center justify-between">
+              <div className="absolute top-0 right-0 p-4 opacity-10"><FaCalendarAlt className="text-8xl text-indigo-500" /></div>
+              <div>
+                <p className="text-indigo-400 text-sm font-bold uppercase tracking-wider mb-1">Total Active</p>
+                <h3 className="text-4xl font-bold text-white">{stats.active}</h3>
+              </div>
+           </div>
+        </div>
+
+        {/* Main List Area */}
+        <div className="flex-1 overflow-y-auto min-h-0 pr-2 custom-scrollbar">
+          
+          {loading ? (
+            <div className="flex flex-col items-center justify-center p-20">
+              <FiLoader className="h-10 w-10 text-indigo-500 animate-spin mb-4" />
+              <p className="text-slate-400 font-medium">Loading agenda...</p>
+            </div>
+          ) : reminders.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-[50dvh] text-slate-400">
+              <FaCheckCircle className="text-6xl text-slate-700 mx-auto mb-4" />
+              <p className="text-lg font-bold text-white mb-1">You're all caught up!</p>
+              <p className="text-sm">Enjoy your zero-inbox or create a new reminder.</p>
+            </div>
+          ) : (
+            <div className="space-y-10 pb-20">
+              
+              {/* Critical Urgency List */}
+              {upcomingReminders.length > 0 && (
+                <div>
+                   <h2 className="text-sm font-bold text-rose-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                     <FaExclamationCircle /> Immediate Attention Required
+                   </h2>
+                   <div className="flex flex-col gap-3">
+                     {upcomingReminders.map(r => (
+                        <div key={r._id} className="group bg-neutral-900/60 rounded-xl p-4 flex items-center gap-6 ring-1 ring-rose-500/30 hover:ring-rose-500/60 transition-all border-l-4 border-l-rose-500 relative shadow-[0_4px_20px_rgba(244,63,94,0.1)]">
+                           <button onClick={() => handleComplete(r._id)} className="w-6 h-6 rounded-full border-2 border-slate-500 flex items-center justify-center hover:bg-emerald-500 hover:border-emerald-500 text-transparent hover:text-white transition-all shrink-0">
+                              <FaCheck className="text-xs focus:outline-none" />
+                           </button>
+                           
+                           <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-1">
+                                <h4 className="text-white font-bold text-lg truncate">{r.title}</h4>
+                                <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${getPriorityStyle(r.priority)}`}>{r.priority}</span>
+                                {isOverdue(r.dueDate) && <span className="bg-rose-500/20 text-rose-400 px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">Overdue</span>}
+                              </div>
+                              <p className="text-slate-400 text-sm truncate">{r.description || "No description provided."}</p>
+                           </div>
+
+                           <div className="flex flex-col items-end text-sm whitespace-nowrap shrink-0">
+                              <div className={`font-bold ${isOverdue(r.dueDate) ? 'text-rose-400' : 'text-amber-400'}`}>
+                                 {new Date(r.dueDate).toLocaleDateString()}
+                              </div>
+                              {r.caseId && <div className="text-indigo-400 text-xs font-medium">Linked: {r.caseId.title || "Ref Case"}</div>}
+                           </div>
+
+                           {/* Hidden actions */}
+                           <div className="absolute right-[-10px] opacity-0 group-hover:opacity-100 group-hover:right-4 transition-all bg-neutral-900 p-2 rounded-lg ring-1 ring-white/10 shadow-xl flex gap-1">
+                              <button onClick={() => handleDelete(r._id)} className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-colors"><FaTrash /></button>
+                           </div>
+                        </div>
+                     ))}
+                   </div>
+                </div>
+              )}
+
+              {/* Standard List */}
+              {otherReminders.length > 0 && (
+                <div>
+                   <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4">Upcoming Schedule</h2>
+                   <div className="flex flex-col gap-3">
+                     {otherReminders.map(r => (
+                        <div key={r._id} className="group bg-neutral-900/40 rounded-xl p-4 flex items-center gap-6 ring-1 ring-white/5 hover:ring-indigo-500/30 transition-all border-l-4 border-l-transparent hover:border-l-indigo-500 relative">
+                           <button onClick={() => handleComplete(r._id)} className="w-6 h-6 rounded-full border-2 border-slate-500 flex items-center justify-center hover:bg-emerald-500 hover:border-emerald-500 text-transparent hover:text-white transition-all shrink-0">
+                              <FaCheck className="text-xs" />
+                           </button>
+                           
+                           <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-3 mb-1">
+                                <h4 className="text-white font-bold text-base truncate">{r.title}</h4>
+                                <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${getPriorityStyle(r.priority)}`}>{r.priority}</span>
+                              </div>
+                              <p className="text-slate-500 text-sm truncate">{r.description || "No description provided."}</p>
+                           </div>
+
+                           <div className="flex flex-col items-end text-sm whitespace-nowrap shrink-0">
+                              <div className="text-slate-300 font-medium">
+                                 {new Date(r.dueDate).toLocaleDateString()}
+                              </div>
+                              {r.caseId && <div className="text-indigo-400/70 text-xs">Linked: {r.caseId.title || "Ref Case"}</div>}
+                           </div>
+
+                           <div className="absolute right-[-10px] opacity-0 group-hover:opacity-100 group-hover:right-4 transition-all bg-neutral-900 p-2 rounded-lg ring-1 ring-white/10 shadow-xl flex gap-1">
+                              <button onClick={() => handleDelete(r._id)} className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded transition-colors"><FaTrash /></button>
+                           </div>
+                        </div>
+                     ))}
+                   </div>
+                </div>
+              )}
+
+              {/* Completed List */}
+              {completedReminders.length > 0 && (
+                <div className="opacity-60">
+                   <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-4">Completed Items</h2>
+                   <div className="flex flex-col gap-2">
+                     {completedReminders.map(r => (
+                        <div key={r._id} className="bg-black/20 rounded-xl p-3 flex items-center gap-6 ring-1 ring-white/5 relative group">
+                           <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0">
+                              <FaCheck className="text-xs" />
+                           </div>
+                           
+                           <div className="flex-1 min-w-0">
+                              <h4 className="text-slate-400 font-medium text-sm line-through truncate">{r.title}</h4>
+                           </div>
+                           
+                           <span className="text-xs text-slate-500 font-medium">
+                              Done: {new Date(r.completedAt).toLocaleDateString()}
+                           </span>
+
+                           <div className="absolute right-[-10px] opacity-0 group-hover:opacity-100 group-hover:right-2 transition-all flex gap-1 bg-neutral-900 p-1 rounded">
+                              <button onClick={() => handleDelete(r._id)} className="p-2 text-slate-500 hover:text-rose-400 transition-colors"><FaTrash /></button>
+                           </div>
+                        </div>
+                     ))}
+                   </div>
+                </div>
+              )}
+
+            </div>
+          )}
+        </div>
+
+        {/* Slide-out Drawer Overlay */}
+        <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300 ${isDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`} onClick={closeDrawer}></div>
+        
+        {/* Slide-out Drawer Container */}
+        <div className={`fixed top-0 right-0 h-full w-full sm:w-[450px] bg-neutral-900 border-l border-white/10 z-50 transform transition-transform duration-300 ease-in-out shadow-2xl flex flex-col ${isDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+          
+          <div className="flex justify-between items-center p-6 border-b border-white/5 bg-black/20 shrink-0">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <FaCalendarAlt className="text-indigo-400"/> New Deadline
             </h2>
-            <div className="space-y-3">
-              {upcomingReminders.map((reminder) => (
-                <div
-                  key={reminder._id}
-                  className={`rounded-xl p-4 border-2 ${isOverdue(reminder.dueDate) ? "border-rose-500/50 bg-rose-900/20" : "border-yellow-500/50 bg-yellow-900/20"}`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-white">{reminder.title}</h3>
-                      {reminder.description && (
-                        <p className="text-sm text-slate-300 mt-1">{reminder.description}</p>
-                      )}
-                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
-                        <span className="flex items-center gap-1">
-                          <FaCalendar /> {new Date(reminder.dueDate).toLocaleDateString()}
-                        </span>
-                        {reminder.caseId && (
-                          <span>Case: {reminder.caseId.title || "N/A"}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleComplete(reminder._id)}
-                        className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400"
-                      >
-                        <FaCheckCircle />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(reminder._id)}
-                        className="p-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400"
-                      >
-                        <FaTimesCircle />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <button onClick={closeDrawer} className="p-2 bg-white/5 hover:bg-white/10 text-slate-300 rounded-full transition-colors">
+              <FaTimes />
+            </button>
           </div>
-        )}
 
-        {/* Other Reminders */}
-        {otherReminders.length > 0 && (
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold text-white mb-3">All Reminders</h2>
-            <div className="space-y-3">
-              {otherReminders.map((reminder) => (
-                <div
-                  key={reminder._id}
-                  className="rounded-xl p-4 border border-white/10 bg-neutral-900/50"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-white">{reminder.title}</h3>
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${getPriorityColor(reminder.priority)}`}>
-                          {reminder.priority}
-                        </span>
-                      </div>
-                      {reminder.description && (
-                        <p className="text-sm text-slate-300 mt-1">{reminder.description}</p>
-                      )}
-                      <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
-                        <span className="flex items-center gap-1">
-                          <FaCalendar /> {new Date(reminder.dueDate).toLocaleDateString()}
-                        </span>
-                        {reminder.caseId && (
-                          <span>Case: {reminder.caseId.title || "N/A"}</span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleComplete(reminder._id)}
-                        className="p-2 rounded-lg bg-green-500/20 hover:bg-green-500/30 text-green-400"
+          <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+            <form id="reminderForm" onSubmit={handleSubmit} className="space-y-6">
+              
+              <div>
+                 <label className="block text-sm font-semibold text-slate-300 mb-1.5">Action Item <span className="text-rose-500">*</span></label>
+                 <input type="text" required value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-white/10 bg-black/20 text-slate-100 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 placeholder:text-slate-600" placeholder="e.g. File Motion for Discovery" />
+              </div>
+
+              <div>
+                 <label className="block text-sm font-semibold text-slate-300 mb-1.5">Description</label>
+                 <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows="3" className="w-full px-4 py-3 rounded-xl border border-white/10 bg-black/20 text-slate-100 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50 resize-none placeholder:text-slate-600" placeholder="Any special instructions or notes..."/>
+              </div>
+
+              <div>
+                 <label className="block text-sm font-semibold text-slate-300 mb-1.5">Target Date <span className="text-rose-500">*</span></label>
+                 <input type="datetime-local" required value={formData.dueDate} onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-white/10 bg-black/20 text-slate-100 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50" style={{colorScheme: 'dark'}}/>
+              </div>
+
+              <div>
+                 <label className="block text-sm font-semibold text-slate-300 mb-1.5">Urgency Level</label>
+                 <div className="grid grid-cols-2 gap-3">
+                   {['low', 'medium', 'high', 'urgent'].map(level => (
+                      <button 
+                        key={level} 
+                        type="button" 
+                        onClick={() => setFormData({ ...formData, priority: level })} 
+                        className={`py-2 px-4 rounded-lg font-bold text-sm capitalize transition-all border ${
+                          formData.priority === level 
+                            ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg' 
+                            : 'bg-black/20 border-white/10 text-slate-400 hover:text-white hover:bg-white/5'
+                        }`}
                       >
-                        <FaCheckCircle />
+                        {level}
                       </button>
-                      <button
-                        onClick={() => handleDelete(reminder._id)}
-                        className="p-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400"
-                      >
-                        <FaTimesCircle />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+                   ))}
+                 </div>
+              </div>
 
-        {/* Completed */}
-        {completedReminders.length > 0 && (
-          <div>
-            <h2 className="text-lg font-semibold text-slate-400 mb-3">Completed</h2>
-            <div className="space-y-3">
-              {completedReminders.map((reminder) => (
-                <div
-                  key={reminder._id}
-                  className="rounded-xl p-4 border border-white/10 bg-neutral-900/50 opacity-60"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-slate-400 line-through">{reminder.title}</h3>
-                        <FaCheckCircle className="text-green-400" />
-                      </div>
-                      <p className="text-xs text-slate-500 mt-1">
-                        Completed on {new Date(reminder.completedAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleDelete(reminder._id)}
-                      className="p-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-400"
-                    >
-                      <FaTimesCircle />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {reminders.length === 0 && (
-          <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-12 text-center text-slate-400">
-            <p>No reminders yet. Create your first reminder to track important deadlines.</p>
-          </div>
-        )}
-
-        {/* Modal */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-neutral-900 rounded-2xl ring-1 ring-white/10 p-6 w-full max-w-md">
-              <h2 className="text-xl font-bold text-white mb-4">New Reminder</h2>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Title *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows="3"
-                    className="w-full px-3 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Due Date *</label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={formData.dueDate}
-                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Priority</label>
-                  <select
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-1">Link to Case (Optional)</label>
-                  <select
-                    value={formData.caseId}
-                    onChange={(e) => setFormData({ ...formData, caseId: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-                  >
-                    <option value="">No case linked</option>
+              <div>
+                 <label className="block text-sm font-semibold text-slate-300 mb-1.5">Link to Legal Matter</label>
+                 <select value={formData.caseId} onChange={(e) => setFormData({ ...formData, caseId: e.target.value })} className="w-full px-4 py-3 rounded-xl border border-white/10 bg-black/20 text-slate-100 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/50">
+                    <option value="" className="bg-neutral-900">None (General Deadline)</option>
                     {cases.map((caseItem) => (
-                      <option key={caseItem._id} value={caseItem._id}>
+                      <option key={caseItem._id} value={caseItem._id} className="bg-neutral-900">
                         {caseItem.title}
                       </option>
                     ))}
-                  </select>
-                </div>
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
-                  >
-                    Create Reminder
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="px-4 py-2 rounded-xl border border-white/10 bg-neutral-800 hover:bg-neutral-700 text-slate-100 font-semibold"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
+                 </select>
+              </div>
+
+            </form>
           </div>
-        )}
+
+          <div className="p-6 border-t border-white/5 bg-neutral-900 shrink-0 flex gap-4">
+             <button type="button" onClick={closeDrawer} className="flex-1 px-4 py-3 rounded-xl border border-white/10 bg-transparent hover:bg-white/5 text-slate-300 font-bold transition-all">
+               Cancel
+             </button>
+             <button type="submit" form="reminderForm" className="flex-1 px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg transition-all">
+               Add to Timeline
+             </button>
+          </div>
+          
+        </div>
+
       </div>
     </DashboardLayout>
   );
 }
-

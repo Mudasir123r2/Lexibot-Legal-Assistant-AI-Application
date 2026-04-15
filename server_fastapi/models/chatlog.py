@@ -18,11 +18,17 @@ class QueryType(str, Enum):
     judgment_search = "judgment_search"
     summarization = "summarization"
     guidance = "guidance"
+    single_document = "single_document"
 
 class ChatContext(BaseModel):
-    queryType: QueryType = QueryType.general
+    queryType: str = "general"
     relatedJudgmentId: Optional[str] = None
     relatedCaseId: Optional[str] = None
+    judgmentId: Optional[str] = None
+    title: Optional[str] = None
+    explicitTextContext: Optional[str] = None
+
+    model_config = {"extra": "allow"}   # Accept any extra fields from frontend
 
 class ChatStatus(str, Enum):
     active = "active"

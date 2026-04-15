@@ -5,8 +5,14 @@ from bson import ObjectId
 from datetime import datetime
 from typing import List, Optional
 import re
+import logging
+import asyncio
+from utils.formatters import format_judgment_title, extract_court
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/judgments", tags=["Judgments"])
+
 
 @router.get("/search")
 async def search_judgments(
@@ -16,171 +22,371 @@ async def search_judgments(
     limit: int = Query(20, le=100),
     page: int = Query(1, ge=1)
 ):
+    import traceback
     try:
         from services.rag_pipeline import get_rag_pipeline
+        from services.llm_service import get_llm_service
         rag = get_rag_pipeline()
         vector_store = rag.vector_store
-        
-        # Deduplicate FAISS chunks into unified file boundaries
-        unique_judgments = {}
-        for chunk in vector_store.metadata:
-            title = chunk.get("title", "")
-            if not title or title == "Untitled":
-                continue
-            if title not in unique_judgments:
-                # Mock a MongoDB-style _id using the title hex for unique fetching later if needed
-                import hashlib
-                mock_id = hashlib.md5(title.encode()).hexdigest()[:24]
-                unique_judgments[title] = {
-                    "_id": chunk.get("_id", chunk.get("id", mock_id)),
-                    "title": title,
-                    "caseNumber": chunk.get("case_number", "N/A"),
-                    "caseType": chunk.get("case_type", chunk.get("category", "")),
-                    "court": chunk.get("court", ""),
-                    "dateOfJudgment": chunk.get("date", datetime.utcnow().isoformat()),
-                    "judge": chunk.get("judge", ""),
-                    "summary": chunk.get("excerpt", chunk.get("content", "")[:300]) + "..."
-                }
+
+        all_judgments = []
+
+        # ── Semantic search path (preferred) ──────────────────────────────
+        if query and len(query.strip()) > 2:
+            try:
+                # search_judgments returns _format_sources output:
+                # [{id, title, case_type, court, date, similarity, excerpt}, ...]
+                semantic_docs = rag.search_judgments(query, top_k=limit * 50) # Ask for MASSIVE extra to account for filtering out non-easylaw
                 
-        all_judgments = list(unique_judgments.values())
-        
-        # Use simple string matching for category/court filters
+                # ENFORCE EASY LAW ONLY FILTER & REMOVE STATUTES
+                easylaw_docs = []
+                for doc in semantic_docs:
+                    journal = str(doc.get("journal") or "")
+                    case_num = str(doc.get("case_number") or doc.get("caseNumber") or "")
+                    src = str(doc.get("source_file") or "")
+                    cat = str(doc.get("category") or doc.get("case_type") or doc.get("caseType") or "")
+                    title = str(doc.get("title") or "")
+                    
+                    # Hard filter to remove Acts and Ordinances
+                    title_l = title.lower()
+                    if (
+                        cat.lower() in ("statute", "law", "act") 
+                        or "laws/" in src.lower() 
+                        or ("ordinance" in title_l)
+                        or (("act," in title_l or "act 19" in title_l or "act 20" in title_l) and " vs " not in title_l and " v " not in title_l and " v. " not in title_l)
+                    ):
+                        continue
+
+                    if journal or "Appeal No" in case_num or src.startswith("administrator"):
+                        easylaw_docs.append(doc)
+                semantic_docs = easylaw_docs
+
+                seen_keys = set()
+                for doc in semantic_docs:
+                    # Use the pre-calculated ID from the search results (repaired mock_id)
+                    mock_id = doc.get("id") or doc.get("_id")
+                    
+                    if mock_id in seen_keys:
+                        continue
+                    seen_keys.add(mock_id)
+                    
+                    all_judgments.append({
+                        "_id":           mock_id,
+                        "title":         doc.get("title") or "Untitled Judgment",
+                        "caseNumber":    doc.get("case_number") or "N/A",
+                        "caseType":      doc.get("case_type")   or "Judgment",
+                        "court":         doc.get("court")       or "Supreme Court of Pakistan",
+                        "dateOfJudgment": doc.get("date")        or "",
+                        "judge":         doc.get("judge")       or "",
+                        "summary":       doc.get("excerpt")     or "",
+                        "score":         doc.get("similarity")  or 0.0,
+                        "journal":       doc.get("journal")     or "",
+                        "parties":       doc.get("parties")     or "",
+                        "lawyers":       doc.get("lawyers")     or "",
+                        "statutes":      doc.get("statutes")    or ""
+                    })
+
+            except Exception as sem_err:
+                logger.error(f"Semantic search failed, falling back to metadata scan: {sem_err}\n{traceback.format_exc()}")
+                # Fall through to metadata scan below
+
+        # ── Metadata scan fallback (short queries or semantic failure) ────
+        if not all_judgments:
+            import sqlite3, json as _json
+            db_path = vector_store.index_path / "metadata.db"
+            if db_path.exists():
+                conn = sqlite3.connect(str(db_path), check_same_thread=False)
+                conn.row_factory = sqlite3.Row
+                try:
+                    # Build WHERE clause
+                    # Enforce strictly Easy Law documents as requested by user
+                    conditions = ["(excerpt LIKE '%Journal %' OR excerpt LIKE '%\nAppeal No.%' OR source_file LIKE 'administrator%')"]
+                    conditions.append("(category != 'Statute' AND title NOT LIKE '%Ordinance%' AND title NOT LIKE '%Act, %')")
+                    params = []
+                    if query:
+                        # FAST fallback query focusing on EasyLaw subset
+                        conditions.insert(0,
+                            "(title LIKE ? OR court LIKE ?)"
+                        )
+                        q_like = f"%{query}%"
+                        params += [q_like, q_like]
+                    if caseType:
+                        conditions.append("(case_type LIKE ? OR category LIKE ?)")
+                        ct_like = f"%{caseType}%"
+                        params += [ct_like, ct_like]
+                    if court:
+                        conditions.append("court LIKE ?")
+                        params.append(f"%{court}%")
+
+                    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+                    # Get distinct documents (group by mock_id to handle repaired titles)
+                    sql = f"""
+                        SELECT mock_id, title, source_file, court, judge, date,
+                               case_number, case_type, category, excerpt,
+                               MIN(row_id) as row_id
+                        FROM chunks
+                        {where}
+                        GROUP BY mock_id
+                        ORDER BY row_id
+                        LIMIT {limit * 20}
+                    """
+                    rows = conn.execute(sql, params).fetchall()
+                    
+                    for row in rows:
+                        title    = row["title"] or "Untitled"
+                        source   = row["source_file"] or ""
+                        case_num = row["case_number"] or ""
+                        # Use pre-calculated mock_id from SQLite repair
+                        mock_id  = row["mock_id"]
+                        
+                        from utils.formatters import extract_full_metadata
+                        full_meta = extract_full_metadata(row["excerpt"])
+                        
+                        all_judgments.append({
+                            "_id":            mock_id,
+                            "title": format_judgment_title(case_num, row["court"], title, row["excerpt"], source),
+                            "caseNumber": case_num or "N/A",
+                            "caseType":       row["case_type"] or row["category"] or ("Statute" if "Act" in title or "Ordinance" in title else "Judgment"),
+                            "court":          extract_court(row["court"], row["excerpt"]) or "Supreme Court of Pakistan",
+                            "dateOfJudgment": row["date"] or "",
+                            "judge":          full_meta["judge"] or row["judge"] or "",
+                            "summary":        (row["excerpt"] or "")[:300] + "...",
+                            "score":          0.0,
+                            "journal":        full_meta["journal"],
+                            "parties":        full_meta["parties"],
+                            "lawyers":        full_meta["lawyers"],
+                            "statutes":       full_meta["statutes"]
+                        })
+                finally:
+                    conn.close()
+            else:
+                # Last resort: capped metadata property (50k limit)
+                for chunk in vector_store.metadata:
+                    exc = str(chunk.get("excerpt") or chunk.get("content") or "")
+                    src = str(chunk.get("source_file") or chunk.get("sourceFile") or "")
+                    if "Journal " not in exc and "\nAppeal No." not in exc and not src.startswith("administrator"):
+                        continue
+                    
+                    mock_id   = chunk.get("mock_id")
+                    title     = chunk.get("title") or "Untitled"
+                    if not any(j["_id"] == mock_id for j in all_judgments):
+                        from utils.formatters import extract_full_metadata
+                        full_meta = extract_full_metadata(chunk.get("excerpt") or chunk.get("content", ""))
+                        all_judgments.append({
+                            "_id":            mock_id,
+                            "title":          format_judgment_title(chunk.get("case_number"), chunk.get("court"), title, chunk.get("excerpt"), chunk.get("source_file", "")),
+                            "caseNumber":     chunk.get("case_number") or "N/A",
+                            "caseType":       chunk.get("case_type") or chunk.get("category") or ("Statute" if "Act" in title or "Ordinance" in title else "Judgment"),
+                            "court":          extract_court(chunk.get("court"), chunk.get("excerpt")) or "Supreme Court of Pakistan",
+                            "dateOfJudgment": chunk.get("date") or "",
+                            "judge":          full_meta["judge"] or chunk.get("judge") or "",
+                            "summary":        (chunk.get("excerpt") or chunk.get("content", "")[:300]) + "...",
+                            "score":          0.0,
+                            "journal":        full_meta["journal"],
+                            "parties":        full_meta["parties"],
+                            "lawyers":        full_meta["lawyers"],
+                            "statutes":       full_meta["statutes"]
+                        })
+
+
+        # ── Optional field filters ─────────────────────────────────────────
+
         if caseType:
             c_lower = caseType.lower()
             all_judgments = [j for j in all_judgments if c_lower in j.get("caseType", "").lower()]
-            
+
         if court:
             court_lower = court.lower()
             all_judgments = [j for j in all_judgments if court_lower in j.get("court", "").lower()]
-            
-        # If the user performed a deep string search, prioritize FAISS semantic ranking!
-        if query and len(query.strip()) > 2:
-            semantic_docs = rag.search_judgments(query, top_k=limit)
-            if semantic_docs:
-                all_judgments = []
-                for doc in semantic_docs:
-                    import hashlib
-                    doc_title = doc.get("title", "Untitled")
-                    mock_id = hashlib.md5(doc_title.encode()).hexdigest()[:24]
-                    all_judgments.append({
-                        "_id": doc.get("id", mock_id),
-                        "title": doc_title,
-                        "caseNumber": doc.get("case_type", "N/A"),
-                        "caseType": doc.get("case_type", ""),
-                        "court": doc.get("court", ""),
-                        "dateOfJudgment": doc.get("date", datetime.utcnow().isoformat()),
-                        "summary": doc.get("excerpt", "")
-                    })
-        elif query:
-            # Fallback string filter if query is too short for semantic
-            q_lower = query.lower()
-            all_judgments = [j for j in all_judgments if q_lower in str(j).lower()]
-        
-        # Calculate pagination
+
+        # ── Pagination ────────────────────────────────────────────────────
         total = len(all_judgments)
-        skip = (page - 1) * limit
-        paginated_judgments = all_judgments[skip:skip+limit]
-        
+        skip  = (page - 1) * limit
+        paginated = all_judgments[skip: skip + limit]
+
         return {
-            "judgments": paginated_judgments,
+            "judgments": paginated,
             "pagination": {
-                "total": total,
-                "page": page,
-                "limit": limit,
-                "pages": (total + limit - 1) // limit
+                "total":  total,
+                "page":   page,
+                "limit":  limit,
+                "pages":  (total + limit - 1) // limit
             }
         }
-        
+
     except Exception as e:
-        print(f"Error searching FAISS metadata judgments: {e}")
+        tb = traceback.format_exc()
+        print(f"Error searching judgments: {e}\n{tb}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to search judgments via FAISS pipeline"
+            detail=f"Failed to search judgments: {str(e)}"
         )
+
 
 @router.get("/{judgment_id}", response_model=JudgmentResponse)
 async def get_judgment(judgment_id: str, db = Depends(get_db)):
     """Get a specific judgment by ID"""
     try:
         from bson.errors import InvalidId
-        try:
-            judgment = await db.judgments.find_one({"_id": ObjectId(judgment_id)})
-        except InvalidId:
-            judgment = None
-            
-        if not judgment:
-            from services.rag_pipeline import get_rag_pipeline
-            vector_store = get_rag_pipeline().vector_store
-            chunks = []
-            doc_title = None
-            first_chunk = None
-            
-            for chunk in vector_store.metadata:
-                chunk_title = chunk.get("title", "Untitled")
-                import hashlib
-                mock_id = chunk.get("id", hashlib.md5(chunk_title.encode()).hexdigest()[:24])
-                if mock_id == judgment_id:
-                    chunks.append(chunk)
-                    if not first_chunk:
-                        first_chunk = chunk
-                        doc_title = chunk_title
-                        
-            if not chunks:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Judgment not found"
+        from services.rag_pipeline import get_rag_pipeline
+        from services.llm_service import get_llm_service
+        import sqlite3
+        
+        # 1. Try finding in MongoDB first (Legacy or New high-level JSON)
+        judgment = None
+        if ObjectId.is_valid(judgment_id):
+            try:
+                # Set a tight timeout for MongoDB to prevent UI hangs
+                judgment = await asyncio.wait_for(
+                    db.judgments.find_one({"_id": ObjectId(judgment_id)}),
+                    timeout=1.5
                 )
-                
-            full_text = "\n\n".join([c.get("content", "") for c in chunks])
-            return {
-                "_id": judgment_id,
-                "title": doc_title or "Untitled",
-                "caseNumber": first_chunk.get("case_number") or "N/A",
-                "court": first_chunk.get("court") or "Not Specified",
-                "judge": first_chunk.get("judge") or "Not Specified",
-                "dateOfJudgment": first_chunk.get("date") or datetime.utcnow().isoformat(),
-                "fullText": full_text or "No content available.",
-                "summary": first_chunk.get("summary") or "No summary available.",
-                "caseType": first_chunk.get("case_type") or "Not Specified",
-                "keyInformation": {
-                    "parties": [{"name": str(first_chunk.get("parties")), "role": "Unknown"}] if first_chunk.get("parties") else [],
-                    "issues": [],
-                    "decisions": [],
-                    "deadlines": [],
-                    "obligations": []
-                },
-                "keywords": [],
-                "citations": [],
-                "referencedCases": [],
-                "jurisdiction": "",
-                "year": None,
-                "tags": [],
-                "createdAt": datetime.utcnow().isoformat(),
-                "updatedAt": datetime.utcnow().isoformat()
+            except (InvalidId, asyncio.TimeoutError, Exception) as e:
+                logger.warning(f"Note: MongoDB lookup skipped/failed for {judgment_id} (Falling back to SQLite): {e}")
+                judgment = None
+
+        if judgment:
+            raw_text = judgment.get("content") or judgment.get("fullText") or ""
+            # OCR Cleaning
+            metadata_dict = {
+                "title": judgment.get("title") or judgment.get("name") or "",
+                "case_number": judgment.get("caseNumber") or judgment.get("case_number") or "",
+                "court": judgment.get("court") or "",
+                "date": judgment.get("dateOfJudgment") or judgment.get("date") or "",
+                "case_type": judgment.get("caseType") or judgment.get("category") or ""
             }
+            print(f"Cleaning OCR text for MongoDB judgment {judgment_id}...")
+            
+            from starlette.concurrency import run_in_threadpool
+            cleaned_text = await run_in_threadpool(get_llm_service().clean_ocr_text, raw_text, metadata=metadata_dict)
+
+            from utils.formatters import extract_full_metadata
+            full_meta = extract_full_metadata(raw_text)
+
+            return {
+                "_id": str(judgment["_id"]),
+                "title": format_judgment_title(
+                    judgment.get("caseNumber") or judgment.get("case_number"),
+                    judgment.get("court"),
+                    judgment.get("title") or judgment.get("name"),
+                    judgment.get("summary") or judgment.get("fullText", "")[:1000],
+                    judgment.get("sourceFile") or judgment.get("source_file", "")
+                ),
+                "content": cleaned_text,
+                "caseNumber": judgment.get("caseNumber") or judgment.get("case_number") or "N/A",
+                "court": judgment.get("court") or "Supreme Court of Pakistan",
+                "dateOfJudgment": judgment.get("dateOfJudgment") or judgment.get("date") or "",
+                "judge": full_meta["judge"] or judgment.get("judge") or "Hon'ble Court",
+                "caseType": judgment.get("caseType") or judgment.get("category") or "Judgment",
+                "summary": judgment.get("summary") or judgment.get("excerpt") or "",
+                "fullText": cleaned_text,
+                "journal": full_meta["journal"] or judgment.get("journal"),
+                "parties": full_meta["parties"] or judgment.get("parties"),
+                "lawyers": full_meta["lawyers"] or judgment.get("lawyers"),
+                "statutes": full_meta["statutes"] or judgment.get("statutes")
+            }
+
+        # 2. Try SQLite fallback (Repaired large datasets)
+        vector_store = get_rag_pipeline().vector_store
+        db_path = vector_store.index_path / "metadata.db"
         
-        judgment["_id"] = str(judgment["_id"])
-        
-        # Populate referenced cases
-        if judgment.get("referencedCases"):
-            ref_ids = [ObjectId(ref) for ref in judgment["referencedCases"] if ObjectId.is_valid(str(ref))]
-            ref_cases_cursor = db.judgments.find(
-                {"_id": {"$in": ref_ids}},
-                {"title": 1, "caseNumber": 1, "dateOfJudgment": 1}
-            )
-            ref_cases = await ref_cases_cursor.to_list(length=None)
-            judgment["referencedCasesData"] = ref_cases
-        
-        return judgment
-        
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error fetching judgment: {e}")
+        if db_path.exists():
+            conn = sqlite3.connect(str(db_path), check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            try:
+                # Fetch metadata for this ID
+                ref_row = conn.execute(
+                    "SELECT * FROM chunks WHERE mock_id = ? LIMIT 1",
+                    (judgment_id,)
+                ).fetchone()
+
+                if ref_row:
+                    # Reconstruct full text from all related chunks
+                    chunks = conn.execute(
+                        "SELECT excerpt FROM chunks WHERE mock_id = ? ORDER BY row_id",
+                        (judgment_id,)
+                    ).fetchall()
+                    
+                    full_text = "\n\n".join([c["excerpt"] for c in chunks if c["excerpt"]])
+
+                    # The user explicitly requested LLM-powered perfect structuring over fast Regex!
+                    # This routes the raw SQLite FAISS text through Cerebras for a deep clean and schema structure.
+                    from services.llm_service import get_llm_service
+                    metadata_dict = {
+                        "title": ref_row["title"] or "",
+                        "case_number": ref_row["case_number"] or "",
+                        "court": ref_row["court"] or "",
+                        "date": ref_row["date"] or "",
+                        "case_type": ref_row["case_type"] or ""
+                    }
+                    
+                    try:
+                        print(f"Cleaning OCR text via LLM Restructurer for FAISS SQLite judgment {judgment_id}...")
+                        from starlette.concurrency import run_in_threadpool
+                        llm_cleaned = await run_in_threadpool(get_llm_service().clean_ocr_text, full_text, metadata=metadata_dict)
+                        if llm_cleaned and len(llm_cleaned) > 50:
+                            full_text = llm_cleaned
+                    except Exception as ll_e:
+                        print(f"LLM Cleaning failed, falling back to raw: {ll_e}")
+
+                    from utils.formatters import extract_full_metadata
+                    full_meta = extract_full_metadata(ref_row["excerpt"] or full_text[:1500])
+
+                    # Convert date string to datetime object for Pydantic validation
+                    judgment_date = None
+                    raw_date = full_meta["date"] or ref_row["date"]
+                    if raw_date:
+                        try:
+                            from dateutil import parser
+                            judgment_date = parser.parse(raw_date, fuzzy=True)
+                        except:
+                            judgment_date = datetime.utcnow()
+                    else:
+                        judgment_date = datetime.utcnow()
+
+                    clean_title = format_judgment_title(
+                        ref_row["case_number"], ref_row["court"], ref_row["title"],
+                        ref_row["excerpt"], ref_row["source_file"] or ""
+                    )
+
+                    return {
+                        "_id":            ref_row["mock_id"],
+                        "id":             ref_row["mock_id"],
+                        "title":          clean_title,
+                        "caseNumber":     ref_row["case_number"] or "N/A",
+                        "caseType":       ref_row["case_type"] or ref_row["category"] or "Judgment",
+                        "court":          extract_court(ref_row["court"], ref_row["excerpt"]) or "Supreme Court of Pakistan",
+                        "dateOfJudgment": judgment_date,
+                        "judge":          full_meta["judge"] or ref_row["judge"] or "Hon'ble Bench",
+                        "fullText":       full_text,
+                        "content":        full_text,
+                        "summary":        (ref_row["excerpt"] or "")[:500] if ref_row["excerpt"] else "",
+                        "keywords":       [],
+                        "citations":      [],
+                        "sourceFile":     ref_row["source_file"] or f"{judgment_id}.txt",
+                        "journal":        full_meta["journal"],
+                        "parties":        full_meta["parties"],
+                        "lawyers":        full_meta["lawyers"],
+                        "statutes":       full_meta["statutes"]
+                    }
+            finally:
+                conn.close()
+
+        # If not found anywhere
+        logger.warning(f"Judgment {judgment_id} not found in MongoDB or SQLite.")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch judgment"
+            status_code=404, 
+            detail="Judgment not found. Your search results may be outdated. Please refresh your search."
         )
+
+    except Exception as e:
+        import traceback
+        error_msg = f"CRITICAL Error in get_judgment for ID {judgment_id}: {str(e)}\n{traceback.format_exc()}"
+        print(error_msg)
+        logger.error(error_msg)
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/", response_model=JudgmentResponse, status_code=status.HTTP_201_CREATED)
 async def create_judgment(judgment_data: JudgmentCreate, db = Depends(get_db)):

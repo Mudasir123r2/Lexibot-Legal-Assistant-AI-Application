@@ -7,6 +7,7 @@ from .llm_service import get_llm_service
 
 logger = logging.getLogger(__name__)
 
+from utils.formatters import format_judgment_title
 
 class RAGPipeline:
     """
@@ -38,19 +39,12 @@ class RAGPipeline:
         question: str,
         top_k: int = 5,
         include_sources: bool = True,
-        user_role: str = "client"
+        user_role: str = "client",
+        explicit_context: Optional[str] = None,
+        query_type: str = "rag_chat"
     ) -> Dict[str, Any]:
         """
-        Process user query using RAG.
-        
-        Args:
-            question: User's legal question
-            top_k: Number of documents to retrieve
-            include_sources: Whether to include source documents in response
-            user_role: User's role (client/advocate/admin) for tailored responses
-            
-        Returns:
-            Dict containing answer, sources, and confidence
+        Process user query using RAG or explicit overriding context.
         """
         try:
             logger.info(f"Processing RAG query for {user_role}: {question[:100]}...")
@@ -61,6 +55,29 @@ class RAGPipeline:
                     "answer": "Could you provide more details about your legal query?",
                     "sources": [],
                     "confidence": 0.0
+                }
+                
+            # Direct Context Bypass - If frontend provides explicit text, skip FAISS!
+            if explicit_context:
+                synthetic_doc = {
+                    "id": "user_provided_context",
+                    "title": "Provided Judgment Text",
+                    "content": explicit_context,
+                    "hybrid_score": 1.0,
+                    "similarity": 1.0,
+                    "category": "judgment"
+                }
+                
+                answer = self.llm_service.generate_with_context(
+                    query=question,
+                    context_documents=[synthetic_doc],
+                    user_role=user_role
+                )
+                
+                return {
+                    "answer": answer,
+                    "confidence": 1.0,
+                    "sources": self._format_sources([synthetic_doc]) if include_sources else []
                 }
                 
             # 3.4.1: QUERY PROCESSING (Expansion & Normalization)
@@ -398,27 +415,74 @@ Keep language simple and clear for non-lawyers."""
             }
     
     def _format_sources(self, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Format retrieved documents for response.
-        
-        Args:
-            documents: Raw documents from vector store
-            
-        Returns:
-            Formatted source documents
-        """
+        import sqlite3
+        from utils.formatters import format_judgment_title, extract_court
         formatted = []
+        
+        # Open lightweight connection to fetch actual headers
+        conn = None
+        if hasattr(self, "vector_store") and self.vector_store:
+            db_path = self.vector_store.index_path / "metadata.db"
+            if db_path.exists():
+                conn = sqlite3.connect(str(db_path), check_same_thread=False)
+                conn.row_factory = sqlite3.Row
+
         for doc in documents:
+            # Prefer mock_id (SQLite) or _id (MongoDB)
+            doc_id = doc.get("mock_id") or doc.get("_id") or doc.get("id")
+            
+            # Start with the doc's raw chunk excerpt
+            header_excerpt = doc.get("excerpt", doc.get("content", ""))
+            doc_source_file = doc.get("source_file", "")
+            doc_title = doc.get("title", "")
+            doc_case_num = doc.get("case_number", "")
+            
+            # Fetch the actual chunk #1 (the header) from SQLite! 
+            # This ensures we get the Parties and Court info, even if the user searched
+            # and matched a paragraph on page 50 of the judgment.
+            if conn and doc_id:
+                try:
+                    row = conn.execute(
+                        "SELECT excerpt, source_file, title, case_number FROM chunks WHERE mock_id = ? ORDER BY row_id ASC LIMIT 1",
+                        (str(doc_id),)
+                    ).fetchone()
+                    if row:
+                        header_excerpt = row["excerpt"] or header_excerpt
+                        doc_source_file = row["source_file"] or doc_source_file
+                        doc_title = row["title"] or doc_title
+                        doc_case_num = row["case_number"] or doc_case_num
+                except Exception as e:
+                    logger.warning(f"Header fetch failed for {doc_id}: {e}")
+
+            from utils.formatters import extract_full_metadata
+            full_meta = extract_full_metadata(header_excerpt)
+
             formatted_doc = {
-                "id": doc.get("_id") or doc.get("id"),
-                "title": doc.get("title", "Untitled"),
+                "id": str(doc_id),
+                "title": format_judgment_title(
+                    doc_case_num, 
+                    doc.get("court", ""), 
+                    doc_title, 
+                    header_excerpt, 
+                    doc_source_file
+                ),
                 "case_type": doc.get("case_type", "Unknown"),
-                "court": doc.get("court", "Unknown"),
+                "case_number": doc_case_num,
+                "court": extract_court(doc.get("court", ""), header_excerpt) or "Unknown",
                 "date": doc.get("date", "Unknown"),
                 "similarity": doc.get("similarity", 0.0),
-                "excerpt": doc.get("content", "")[:300] + "..."  # First 300 chars
+                "excerpt": doc.get("content", "")[:300] + "...",  # Keep the searched chunk as the summary snippet
+                "journal": full_meta["journal"],
+                "parties": full_meta["parties"],
+                "lawyers": full_meta["lawyers"],
+                "judge": full_meta["judge"],
+                "statutes": full_meta["statutes"],
+                "source_file": doc_source_file
             }
             formatted.append(formatted_doc)
+            
+        if conn:
+            conn.close()
         return formatted
     
     def _apply_filters(

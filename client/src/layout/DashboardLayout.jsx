@@ -29,9 +29,9 @@ export default function DashboardLayout({ children }) {
             <Navbar />
           </header>
 
-          <main className="flex-1 overflow-y-auto w-full">
-            <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 h-full">
-              <div className="min-h-full">
+          <main className="flex-1 overflow-y-auto w-full flex flex-col">
+            <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col">
+              <div className="flex-1 flex flex-col">
                 {children}
               </div>
             </div>

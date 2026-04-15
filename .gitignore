@@ -57,3 +57,17 @@ server_fastapi/Datacollection/
 server_fastapi/data/raw_documents/
 server_fastapi/embeddings_output.txt
 server_fastapi/show_embeddings.py
+# Datasets and Data Collections
+server_fastapi/judgments/
+server_fastapi/new datasets/
+server_fastapi/Datacollection/
+server_fastapi/data/raw_documents/
+server_fastapi/data/faiss_index/
+*.db
+*.sqlite3
+
+# Temp and Log Files
+server_fastapi/*.json
+!server_fastapi/package.json
+server_fastapi/*.txt
+!server_fastapi/requirements.txt

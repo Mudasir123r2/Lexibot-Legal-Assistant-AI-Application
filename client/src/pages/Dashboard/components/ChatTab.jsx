@@ -2,11 +2,20 @@ import { useState, useRef, useEffect } from "react";
 import { FiSend, FiLoader, FiTrash2, FiMessageSquare, FiChevronLeft, FiChevronRight, FiMic, FiMicOff, FiThumbsUp, FiThumbsDown, FiVolume2, FiVolumeX } from "react-icons/fi";
 import api from "../../../api/http";
 
-export default function ChatTab() {
+export default function ChatTab({ contextData = null, initialMessage = null, hideSidebar = false, selectedDocAvailable = false }) {
+  const getInitialGreeting = () => {
+    if (contextData?.title) {
+        return `Hello! I have loaded the judgment "**${contextData.title}**" into my context.\n\nI can help you understand this judgment! Would you like me to summarize it, extract key points, or answer any specific questions about it?`;
+    } else if (contextData?.explicitTextContext) {
+        return `Hello! I have successfully processed your custom document.\n\nI can help you dissect and understand this text! Would you like me to simplify it, explain the legal jargon, or pull out the core arguments?`;
+    }
+    return "Hello! I'm LexiBot, your AI legal assistant. I can help you with:\n\n• Summarizing legal judgments\n• Searching for relevant cases\n• Analyzing case outcomes\n• Providing client guidance and checklists\n• Extracting key information from documents\n\nWhat would you like help with today?";
+  };
+
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content: "Hello! I'm LexiBot, your AI legal assistant. I can help you with:\n\n• Summarizing legal judgments\n• Searching for relevant cases\n• Analyzing case outcomes\n• Providing client guidance and checklists\n• Extracting key information from documents\n\nWhat would you like help with today?"
+      content: getInitialGreeting()
     },
   ]);
   const [input, setInput] = useState("");
@@ -21,6 +30,7 @@ export default function ChatTab() {
   const [speakingIndex, setSpeakingIndex] = useState(null);
   const listRef = useRef(null);
   const recognitionRef = useRef(null);
+  const initializedRef = useRef(false);
 
   // Initialize speech recognition
   useEffect(() => {
@@ -155,8 +165,12 @@ export default function ChatTab() {
 
   useEffect(() => {
     // Load chat history on mount
-    loadChatHistory();
-  }, []);
+    if (!hideSidebar) {
+      loadChatHistory();
+    }
+  }, [hideSidebar]);
+
+  // REMOVED AUTO-INITIALMESSAGE EFFECT
 
   const loadChatHistory = async () => {
     try {
@@ -183,7 +197,7 @@ export default function ChatTab() {
     setMessages([
       {
         role: "assistant",
-        content: "Hello! I'm LexiBot, your AI legal assistant. I can help you with:\n\n• Summarizing legal judgments\n• Searching for relevant cases\n• Analyzing case outcomes\n• Providing client guidance and checklists\n• Extracting key information from documents\n\nWhat would you like help with today?"
+        content: getInitialGreeting()
       },
     ]);
     setShowHistory(false);
@@ -204,18 +218,20 @@ export default function ChatTab() {
     }
   };
 
-  const send = async () => {
-    if (!input.trim() || loading) return;
+  const send = async (textOverride = null) => {
+    const textToSend = typeof textOverride === 'string' ? textOverride : input;
+    if (!textToSend.trim() || loading) return;
 
-    const userMessage = input.trim();
+    const userMessage = textToSend.trim();
     setMessages((m) => [...m, { role: "user", content: userMessage }]);
-    setInput("");
+    if (!textOverride) setInput("");
     setLoading(true);
 
     try {
       const { data } = await api.post("/ai/chat", {
         message: userMessage,
-        sessionId: sessionId
+        sessionId: sessionId,
+        context: contextData
       });
 
       // Update sessionId if it's a new chat
@@ -225,7 +241,7 @@ export default function ChatTab() {
 
       setMessages((m) => [...m, {
         role: "assistant",
-        content: data.response,
+        content: typeof data.response === 'string' ? data.response : JSON.stringify(data.response, null, 2),
         timestamp: new Date().toISOString()
       }]);
 
@@ -242,7 +258,7 @@ export default function ChatTab() {
       } else if (err.response?.status === 503 || err.response?.status === 500) {
         errorMessage = "Service temporarily down. Please try again in a few moments.";
       } else if (err.response?.data?.detail) {
-        errorMessage = err.response.data.detail;
+        errorMessage = typeof err.response.data.detail === 'string' ? err.response.data.detail : JSON.stringify(err.response.data.detail);
       }
 
       setMessages((m) => [...m, {
@@ -258,7 +274,8 @@ export default function ChatTab() {
   return (
     <div className="relative w-full h-full flex gap-0">
       {/* Chat History Sidebar */}
-      <div className={`relative shrink-0 transition-all duration-300 ${showHistory ? 'w-64' : 'w-0'}`}>
+      {!hideSidebar && (
+        <div className={`relative shrink-0 transition-all duration-300 ${showHistory ? 'w-64' : 'w-0'}`}>
         <div className={`h-full rounded-l-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl transition-all duration-300 ${showHistory ? 'p-2 opacity-100' : 'p-0 opacity-0'}`}>
           {showHistory && (
             <>
@@ -300,9 +317,11 @@ export default function ChatTab() {
           )}
         </div>
       </div>
+      )}
 
       {/* Toggle Button - Draggable Handle Style */}
-      <div className="relative shrink-0 w-8 flex items-center justify-center">
+      {!hideSidebar && (
+        <div className="relative shrink-0 w-8 flex items-center justify-center">
         <button
           onClick={() => setShowHistory(!showHistory)}
           className="absolute top-1/2 -translate-y-1/2 h-24 w-6 rounded-full bg-gradient-to-br from-indigo-600/20 to-indigo-700/20 hover:from-indigo-600/30 hover:to-indigo-700/30 ring-1 ring-white/10 hover:ring-white/20 backdrop-blur-xl flex items-center justify-center text-slate-400 hover:text-white transition-all shadow-lg hover:shadow-xl group cursor-pointer z-10"
@@ -322,6 +341,7 @@ export default function ChatTab() {
           </div>
         </button>
       </div>
+      )}
 
       {/* Chat Panel */}
       <div className="flex-1 min-w-0">
@@ -427,15 +447,27 @@ export default function ChatTab() {
             </div>
 
             {/* Input bar - Fixed at bottom */}
-            <div className="shrink-0 flex items-center gap-2 pt-2 border-t border-white/10">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !loading && send()}
-                placeholder={isListening ? "Listening..." : "Type or speak your message..."}
-                disabled={loading}
-                className="flex-1 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 px-3 py-2.5 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-transparent disabled:opacity-50"
-              />
+            <div className="shrink-0 flex flex-col pt-2 border-t border-white/10">
+              
+              {/* Quick Action Tools */}
+              {selectedDocAvailable && (
+                 <div className="flex flex-wrap gap-2 mb-2 pb-2">
+                    <button onClick={() => send("Summarize this judgment")} disabled={loading} className="px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 rounded-full text-xs font-semibold transition-colors disabled:opacity-50">Summarize</button>
+                    <button onClick={() => send("Explain this judgment in simple language")} disabled={loading} className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/20 rounded-full text-xs font-semibold transition-colors disabled:opacity-50">Explain</button>
+                    <button onClick={() => send("Extract key points from this document")} disabled={loading} className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 rounded-full text-xs font-semibold transition-colors disabled:opacity-50">Extract key points</button>
+                 </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !loading && send()}
+                  placeholder={isListening ? "Listening..." : "Type or speak your message..."}
+                  disabled={loading}
+                  className="flex-1 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 px-3 py-2.5 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-transparent disabled:opacity-50"
+                />
+              </div>
               {/* Voice Input Button */}
               <button
                 onClick={toggleVoiceInput}
