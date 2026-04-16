@@ -5,9 +5,9 @@ import api from "../../../api/http";
 export default function ChatTab({ contextData = null, initialMessage = null, hideSidebar = false, selectedDocAvailable = false }) {
   const getInitialGreeting = () => {
     if (contextData?.title) {
-        return `Hello! I have loaded the judgment "**${contextData.title}**" into my context.\n\nI can help you understand this judgment! Would you like me to summarize it, extract key points, or answer any specific questions about it?`;
+        return `The judgment "${contextData.title}" has been successfully loaded into my active context.\n\nI am prepared to assist you with the analysis of this document. Please let me know if you require a summary, extraction of key points, or answers to specific questions regarding this case.`;
     } else if (contextData?.explicitTextContext) {
-        return `Hello! I have successfully processed your custom document.\n\nI can help you dissect and understand this text! Would you like me to simplify it, explain the legal jargon, or pull out the core arguments?`;
+        return `Your custom document has been successfully processed and loaded into my active context.\n\nI am ready to assist you with your legal analysis. Please let me know if you would like me to simplify complex terminology, outline the core arguments, or summarize the text.`;
     }
     return "Hello! I'm LexiBot, your AI legal assistant. I can help you with:\n\n• Summarizing legal judgments\n• Searching for relevant cases\n• Analyzing case outcomes\n• Providing client guidance and checklists\n• Extracting key information from documents\n\nWhat would you like help with today?";
   };
@@ -344,7 +344,7 @@ export default function ChatTab({ contextData = null, initialMessage = null, hid
       )}
 
       {/* Chat Panel */}
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 h-full flex flex-col">
         <div className="relative rounded-3xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl h-full flex flex-col shadow-xl">
           <div className="p-4 sm:p-6 flex-1 flex flex-col min-h-0">
             <div
@@ -458,36 +458,39 @@ export default function ChatTab({ contextData = null, initialMessage = null, hid
                  </div>
               )}
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-neutral-900/80 border border-white/10 p-1.5 rounded-2xl shadow-inner focus-within:ring-1 focus-within:ring-indigo-500/50 transition-all">
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && !loading && send()}
                   placeholder={isListening ? "Listening..." : "Type or speak your message..."}
                   disabled={loading}
-                  className="flex-1 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 px-3 py-2.5 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 focus:border-transparent disabled:opacity-50"
+                  className="flex-1 bg-transparent text-slate-100 px-3 py-1.5 text-sm placeholder:text-slate-500 focus:outline-none disabled:opacity-50"
                 />
+                
+                {/* Voice Input Button */}
+                <button
+                  onClick={toggleVoiceInput}
+                  disabled={loading}
+                  className={`p-2 rounded-xl transition-all flex items-center justify-center shrink-0 ${isListening
+                      ? "bg-rose-500/20 text-rose-400 animate-pulse scale-105"
+                      : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"
+                    } disabled:opacity-50 disabled:hover:scale-100`}
+                  title={isListening ? "Stop listening" : "Voice input"}
+                >
+                  {isListening ? <FiMicOff size={18} /> : <FiMic size={18} />}
+                </button>
+                
+                {/* Send Button */}
+                <button
+                  onClick={() => send()}
+                  disabled={loading || (!input.trim() && !isListening)}
+                  className="p-2 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-md hover:shadow-lg transition-all disabled:opacity-50 hover:scale-105 active:scale-95 disabled:hover:scale-100 shrink-0"
+                  title="Send message"
+                >
+                  {loading ? <FiLoader className="animate-spin" size={18} /> : <FiSend size={18} className="translate-y-[-1px] translate-x-[1px]" />}
+                </button>
               </div>
-              {/* Voice Input Button */}
-              <button
-                onClick={toggleVoiceInput}
-                disabled={loading}
-                className={`p-2.5 rounded-xl border transition-all ${isListening
-                    ? "bg-rose-600/20 border-rose-500/50 text-rose-400 animate-pulse"
-                    : "border-white/10 bg-neutral-800 text-slate-400 hover:text-white hover:bg-neutral-700"
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                title={isListening ? "Stop listening" : "Voice input"}
-              >
-                {isListening ? <FiMicOff /> : <FiMic />}
-              </button>
-              <button
-                onClick={send}
-                disabled={loading}
-                className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-white shadow-[0_8px_30px_rgba(99,102,241,0.35)]
-                         bg-[linear-gradient(135deg,#4338CA_0%,#6D28D9_30%,#7C3AED_55%,#DB2777_100%)] hover:shadow-[0_10px_40px_rgba(236,72,153,0.35)] disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? <FiLoader className="animate-spin" /> : <FiSend />} Send
-              </button>
             </div>
             {loading && (
               <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">

@@ -1,15 +1,18 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../layout/DashboardLayout";
-import { FaBookOpen, FaGavel, FaRobot, FaSearch, FaArrowLeft, FaCalendar } from "react-icons/fa";
+import { FaBookOpen, FaGavel, FaRobot, FaSearch, FaArrowLeft, FaCalendar, FaTimes } from "react-icons/fa";
 import { FiLoader, FiFileText } from "react-icons/fi";
 import api from "../../api/http";
 import ChatTab from "./components/ChatTab";
 
 export default function JudgmentsDashboard() {
   const [findInputText, setFindInputText] = useState("");
+  const [filterYear, setFilterYear] = useState("");
+  const [filterType, setFilterType] = useState("");
   const [loading, setLoading] = useState(false);
   const [judgments, setJudgments] = useState([]);
   const [selectedJudgment, setSelectedJudgment] = useState(null);
+  const [showChatOverlay, setShowChatOverlay] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   
   // Custom Explain states
@@ -27,13 +30,18 @@ export default function JudgmentsDashboard() {
     setHasSearched(true);
     setSelectedJudgment(null); // Reset selection
     try {
-      const response = await api.get('/judgments/search', {
-        params: {
-          query: findInputText,
-          page: pagination.page,
-          limit: pagination.limit
-        }
-      });
+      const params = {
+        query: findInputText,
+        page: pagination.page,
+        limit: pagination.limit
+      };
+      if (filterYear) params.year = filterYear;
+      if (filterType) params.caseType = filterType;
+
+      console.log("SENDING REQUEST WITH PARAMS:", params);
+      const response = await api.get('/judgments/search', { params });
+      console.log("RECEIVED RESPONSE:", response.data);
+      
       setJudgments(response.data.judgments);
       setPagination(response.data.pagination);
     } catch (error) {
@@ -162,6 +170,38 @@ export default function JudgmentsDashboard() {
               </div>
             </div>
 
+            {/* Filter Bar */}
+            <div className="w-full flex flex-col md:flex-row gap-4 mb-10 -mt-6">
+               <div className="flex-1 flex items-center bg-neutral-900/50 ring-1 ring-white/5 rounded-xl px-4 py-3 shadow-md">
+                 <FaBookOpen className="text-indigo-400 mr-3 text-lg" />
+                 <select
+                   value={filterType}
+                   onChange={e => setFilterType(e.target.value)}
+                   className="w-full bg-transparent border-none text-slate-300 focus:outline-none focus:ring-0"
+                 >
+                   <option value="" className="bg-neutral-900 text-slate-300">All Judgment Types</option>
+                   <option value="Judgment" className="bg-neutral-900 text-slate-300">Judgment</option>
+                   <option value="Statute" className="bg-neutral-900 text-slate-300">Statute / Act</option>
+                   <option value="Civil Appeal" className="bg-neutral-900 text-slate-300">Civil Appeal</option>
+                   <option value="Criminal Appeal" className="bg-neutral-900 text-slate-300">Criminal Appeal</option>
+                   <option value="Constitution Petition" className="bg-neutral-900 text-slate-300">Constitution Petition</option>
+                 </select>
+               </div>
+               <div className="flex-1 flex items-center bg-neutral-900/50 ring-1 ring-white/5 rounded-xl px-4 py-3 shadow-md">
+                 <FaCalendar className="text-indigo-400 mr-3 text-lg" />
+                 <select
+                   value={filterYear}
+                   onChange={e => setFilterYear(e.target.value)}
+                   className="w-full bg-transparent border-none text-slate-300 focus:outline-none focus:ring-0"
+                 >
+                   <option value="" className="bg-neutral-900 text-slate-300">Any Year</option>
+                   {Array.from({ length: 80 }, (_, i) => new Date().getFullYear() - i).map(year => (
+                     <option key={year} value={year} className="bg-neutral-900 text-slate-300">{year}</option>
+                   ))}
+                 </select>
+               </div>
+            </div>
+
             {/* Custom Paste Section Mini-Banner */}
             <div className="w-full bg-neutral-900/50 rounded-xl p-6 ring-1 ring-white/5 shadow-xl mb-12 flex flex-col md:flex-row gap-6 items-center justify-between border-l-4 border-rose-500">
               <div className="flex-1">
@@ -230,7 +270,7 @@ export default function JudgmentsDashboard() {
                             
                             <div className="w-full flex items-center justify-between text-slate-400 border-t border-white/5 pt-2 mt-1">
                                <span className="flex items-center gap-1.5"><FaGavel className="text-slate-500"/> {judgment.court || 'Court N/A'}</span>
-                               <span className="flex items-center gap-1.5"><FaCalendar className="text-slate-500"/> {judgment.dateOfJudgment ? (isNaN(new Date(judgment.dateOfJudgment)) ? 'N/A' : new Date(judgment.dateOfJudgment).getFullYear()) : 'Year N/A'}</span>
+                               <span className="flex items-center gap-1.5"><FaCalendar className="text-slate-500"/> {judgment.year && judgment.year !== 'Unknown' ? judgment.year : (judgment.dateOfJudgment ? (isNaN(new Date(judgment.dateOfJudgment)) ? judgment.dateOfJudgment : new Date(judgment.dateOfJudgment).getFullYear()) : 'Year N/A')}</span>
                             </div>
                           </div>
                         </div>
@@ -252,7 +292,7 @@ export default function JudgmentsDashboard() {
         ) : (
           
           /* STATE 2: DEEP ANALYSIS WORKSPACE (SPLIT SCREEN) */
-          <div className="flex-1 flex flex-col w-full h-full bg-black overflow-hidden z-[50] opacity-100">
+          <div className="fixed inset-0 z-[100] flex flex-col bg-black overflow-hidden opacity-100 animate-fade-in w-screen h-screen">
             {/* Top Bar Navigation */}
             <div className="h-16 shrink-0 bg-neutral-900 ring-1 ring-white/10 px-4 flex items-center justify-between z-10 shadow-md">
                <button 
@@ -269,11 +309,11 @@ export default function JudgmentsDashboard() {
             </div>
 
             {/* Split Panels */}
-            <div className="flex-1 flex min-h-0">
+            <div className="flex-1 flex overflow-hidden min-h-0">
                
-               {/* Left: Document Reader (70%) */}
-               <div className="flex-[7] bg-[#1a1c23] overflow-y-auto p-8 relative scrollbar-hide">
-                  <div className="max-w-4xl mx-auto">
+               {/* Left: Document Reader (Full Screen) */}
+               <div className="flex-1 w-full bg-[#1a1c23] overflow-y-auto p-8 lg:p-12 relative scrollbar-hide">
+                  <div className="max-w-5xl mx-auto transition-all duration-300">
                      <h2 className="text-3xl font-bold text-white mb-6 leading-tight pb-6 border-b border-white/10">
                         {selectedJudgment.title}
                      </h2>
@@ -298,33 +338,67 @@ export default function JudgmentsDashboard() {
                   </div>
                </div>
 
-               {/* Right: LexiBot Chat (30%) */}
-               <div className="flex-[3] min-w-[400px] border-l border-white/10 bg-neutral-900/80 flex flex-col shadow-[rgba(0,0,0,0.5)_-10px_0_25px]">
-                 <div className="p-4 border-b border-white/5 bg-black/20 flex flex-col items-center justify-center pt-6 pb-6 shadow-sm">
-                   <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center ring-4 ring-black shadow-[0_0_15px_rgba(99,102,241,0.5)] mb-3">
-                      <FaRobot className="text-white text-xl" />
-                   </div>
-                   <h3 className="font-bold text-white text-lg tracking-wide">LexiBot</h3>
-                   <p className="text-xs text-slate-400 text-center mt-1 max-w-[250px]">
-                     Your context is rigidly locked to this exact document. Ask me anything about it.
-                   </p>
-                 </div>
-                 
-                 <div className="flex-1 max-h-full overflow-hidden relative">
-                   <ChatTab 
-                     hideSidebar={true} 
-                     contextData={selectedJudgment ? { 
-                       judgmentId: selectedJudgment._id, 
-                       title: selectedJudgment.title,
-                       explicitTextContext: selectedJudgment.isCustom 
-                         ? selectedJudgment.content 
-                         : (selectedJudgment.fullText || selectedJudgment.content || null),
-                       queryType: "single_document"
-                     } : null}
-                     selectedDocAvailable={!!selectedJudgment}
+               {/* Right: LexiBot Chat (Overlay) */}
+               {showChatOverlay && (
+                 <>
+                   {/* Optional blur/dim backdrop */}
+                   <div 
+                     className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-sm transition-opacity" 
+                     onClick={() => setShowChatOverlay(false)}
                    />
-                 </div>
-               </div>
+                   
+                   <div className="fixed right-0 inset-y-0 z-[120] w-full sm:w-1/2 lg:w-1/2 border-l border-white/10 bg-neutral-900/95 shadow-[rgba(0,0,0,0.8)_-20px_0_50px] flex flex-col overflow-hidden animate-slide-in-right">
+                     <div className="h-[70px] px-4 border-b border-white/5 bg-black/40 flex items-center shadow-sm shrink-0 backdrop-blur-md">
+                       <div className="flex items-center gap-4 w-full">
+                         <button 
+                           onClick={() => setShowChatOverlay(false)}
+                           className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors"
+                           title="Close Chat"
+                         >
+                           <FaTimes className="text-xl" />
+                         </button>
+                         <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center ring-2 ring-black shadow-[0_0_10px_rgba(99,102,241,0.5)] shrink-0">
+                            <FaRobot className="text-white text-lg" />
+                         </div>
+                         <div className="flex flex-col">
+                           <h3 className="font-bold text-white text-base tracking-wide">LexiBot Assistant</h3>
+                           <p className="text-[10px] text-emerald-400 mt-0.5 tracking-wider uppercase font-semibold">
+                             Document Context Locked
+                           </p>
+                         </div>
+                       </div>
+                     </div>
+                     
+                     <div className="flex-1 relative min-h-0 bg-[#121318]/90">
+                       <div className="absolute inset-0 h-full w-full flex">
+                         <ChatTab 
+                           hideSidebar={false} 
+                           contextData={selectedJudgment ? { 
+                             judgmentId: selectedJudgment._id, 
+                             title: selectedJudgment.title,
+                             explicitTextContext: selectedJudgment.isCustom 
+                               ? selectedJudgment.content 
+                               : (selectedJudgment.fullText || selectedJudgment.content || null),
+                             queryType: "single_document"
+                           } : null}
+                           selectedDocAvailable={!!selectedJudgment}
+                         />
+                       </div>
+                     </div>
+                   </div>
+                 </>
+               )}
+
+               {/* Floating Action Button */}
+               {!showChatOverlay && (
+                 <button
+                   onClick={() => setShowChatOverlay(true)}
+                   className="fixed bottom-8 left-8 z-[150] w-14 h-14 bg-gradient-to-br from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(99,102,241,0.6)] hover:shadow-[0_0_30px_rgba(99,102,241,0.8)] hover:scale-105 transition-all text-white"
+                   title="Open LexiBot Assistant"
+                 >
+                   <FaRobot className="text-2xl" />
+                 </button>
+               )}
 
             </div>
           </div>

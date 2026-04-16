@@ -132,6 +132,22 @@ class RAGPipeline:
                 
             # Re-rank formally based on the cross-encoder hybrid score
             retrieved_docs.sort(key=lambda x: x.get("hybrid_score", 0), reverse=True)
+
+            # Prioritize Same-Case Chunks & Same Citation Match
+            if retrieved_docs:
+                # Get the highest-ranked document's case ID / citation
+                top_doc_id = retrieved_docs[0].get("id") or retrieved_docs[0].get("case_id")
+                top_doc_title = retrieved_docs[0].get("title", "")
+                
+                for doc in retrieved_docs:
+                    doc_id = doc.get("id") or doc.get("case_id")
+                    
+                    # Apply a Re-Ranking Boost if it's the exact same case / citation
+                    if doc_id == top_doc_id or (top_doc_title and top_doc_title == doc.get("title", "")):
+                        doc["hybrid_score"] += 0.35  # Massive anchor boost ensures facts don't mix multiple cases
+            
+            # Re-sort after applying the Same-Case Priority Boost
+            retrieved_docs.sort(key=lambda x: x.get("hybrid_score", 0), reverse=True)
             
             # 3.4.1: RELEVANCE FILTERING & TRUNCATION
             # Filter out severely irrelevant outliers (threshold simulation)
