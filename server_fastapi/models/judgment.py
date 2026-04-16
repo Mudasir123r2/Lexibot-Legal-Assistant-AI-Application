@@ -18,7 +18,7 @@ class JudgmentBase(BaseModel):
     title: str
     court: str
     judge: Optional[str] = None
-    dateOfJudgment: datetime
+    dateOfJudgment: str
     fullText: str
     summary: Optional[str] = None
     caseType: Optional[str] = None
@@ -39,7 +39,7 @@ class JudgmentUpdate(BaseModel):
     title: Optional[str] = None
     court: Optional[str] = None
     judge: Optional[str] = None
-    dateOfJudgment: Optional[datetime] = None
+    dateOfJudgment: Optional[str] = None
     fullText: Optional[str] = None
     summary: Optional[str] = None
     keyInformation: Optional[KeyInformation] = None

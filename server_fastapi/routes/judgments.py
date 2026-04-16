@@ -385,17 +385,9 @@ async def get_judgment(judgment_id: str, db = Depends(get_db)):
                     from utils.formatters import extract_full_metadata
                     full_meta = extract_full_metadata(ref_row["excerpt"] or full_text[:1500])
 
-                    # Convert date string to datetime object for Pydantic validation
-                    judgment_date = None
-                    raw_date = full_meta["date"] or ref_row["date"]
-                    if raw_date:
-                        try:
-                            from dateutil import parser
-                            judgment_date = parser.parse(raw_date, fuzzy=True)
-                        except:
-                            judgment_date = datetime.utcnow()
-                    else:
-                        judgment_date = datetime.utcnow()
+                    # Pass date as exact string instead of coercing to datetime which overrides to UTC Today
+                    raw_date = full_meta["date"] or ref_row["date"] or "Unknown Date"
+                    judgment_date = str(raw_date).strip()
 
                     clean_title = format_judgment_title(
                         ref_row["case_number"], ref_row["court"], ref_row["title"],
