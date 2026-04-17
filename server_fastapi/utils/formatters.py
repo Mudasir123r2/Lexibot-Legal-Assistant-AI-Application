@@ -46,7 +46,16 @@ def _auto_heal_ocr_spaces(text: str) -> str:
     text = re.sub(r'(?i)dep\s*artment', 'DEPARTMENT', text)
     text = re.sub(r'(?i)sharia\s*t', 'SHARIAT', text)
     text = re.sub(r'(?i)f\s*asih', 'FASIH', text)
-    
+    text = re.sub(r'(?i)\bbalochist\s*an\b', 'Balochistan', text)
+    text = re.sub(r'(?i)\bpeshaw\s*ar\b', 'Peshawar', text)
+    text = re.sub(r'(?i)\bpesha\s*war\b', 'Peshawar', text)
+    text = re.sub(r'(?i)\bislamab\s*ad\b', 'Islamabad', text)
+    text = re.sub(r'(?i)\bislama\s*bad\b', 'Islamabad', text)
+    text = re.sub(r'(?i)\blah\s*ore\b', 'Lahore', text)
+    text = re.sub(r'(?i)\bsind\s*h\b', 'Sindh', text)
+    text = re.sub(r'(?i)\bsin\s*dh\b', 'Sindh', text)
+    text = re.sub(r'(?i)\bkara\s*chi\b', 'Karachi', text)
+
     # Finally, fix VEDANT and COMMISSIONER manual bugs as seen globally
     text = text.replace('VDANT', 'VEDANT')
     text = text.replace('OMMISSIONER', 'COMMISSIONER')

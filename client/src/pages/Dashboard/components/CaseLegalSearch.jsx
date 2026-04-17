@@ -181,15 +181,10 @@ export default function CaseLegalSearch() {
                   onChange={(e) => setCaseType(e.target.value)}
                   className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
                 >
-                  <option value="">All Types</option>
-                  <option value="Civil">Civil</option>
-                  <option value="Criminal">Criminal</option>
-                  <option value="Family">Family</option>
-                  <option value="Corporate">Corporate</option>
-                  <option value="Property">Property</option>
-                  <option value="Contract">Contract</option>
-                  <option value="Employment">Employment</option>
-                  <option value="Constitutional">Constitutional</option>
+                  <option value="">All Judgment Types</option>
+                  <option value="Civil Appeal">Civil Appeal</option>
+                  <option value="Criminal Appeal">Criminal Appeal</option>
+                  <option value="Constitution Petition">Constitution Petition</option>
                 </select>
               </div>
 
@@ -310,7 +305,9 @@ export default function CaseLegalSearch() {
                   </div>
 
                   {judgment.excerpt && (
-                    <p className="text-sm text-slate-400 line-clamp-2">{judgment.excerpt}</p>
+                    <p className="text-sm text-slate-400 line-clamp-2">
+                      {judgment.excerpt.split(/(?:\n|^)\s*JUDGMENT TEXT[:\s-]?/i)[0].trim()}
+                    </p>
                   )}
 
                   {judgment.parties && (
@@ -391,7 +388,9 @@ export default function CaseLegalSearch() {
               {selectedJudgment.summary && (
                 <div className="p-4 rounded-xl bg-neutral-800/50 border border-white/5">
                   <h3 className="font-semibold text-white mb-3">Summary</h3>
-                  <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">{selectedJudgment.summary}</p>
+                  <p className="text-slate-300 whitespace-pre-wrap leading-relaxed">
+                    {selectedJudgment.summary.split(/(?:\n|^)\s*JUDGMENT TEXT[:\s-]?/i)[0].trim()}
+                  </p>
                 </div>
               )}
 

@@ -7,7 +7,7 @@ from typing import List, Optional
 import re
 import logging
 import asyncio
-from utils.formatters import format_judgment_title, extract_court
+from utils.formatters import format_judgment_title, extract_court, _auto_heal_ocr_spaces
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,18 @@ async def search_judgments(
         all_judgments = []
 
         # ── Semantic search path (preferred) ──────────────────────────────
+        if caseType:
+            ct = caseType.lower()
+            types_map = {
+                "civil appeal": "Civil Appeal Judgments: Property dispute appeals, Family law appeals (divorce, maintenance, custody), Contract dispute appeals, Rent and tenancy appeals, Succession / inheritance appeals, Banking & recovery suits (loan recovery appeals)",
+                "criminal appeal": "Criminal Appeal Judgments: Murder / homicide appeals, Theft / robbery appeals, Fraud / cheating cases, Narcotics cases, Bail cancellation or grant appeals, Sentence reduction appeals",
+                "constitution petition": "Constitutional Petition Judgments: Fundamental rights violations, Government action challenges, Illegal detentions, Service matters (jobs, promotions, dismissals), Tax / administrative authority disputes, Public interest litigation"
+            }
+            if ct in types_map:
+                add_str = types_map[ct]
+                query = f"{query} {add_str}" if query else add_str
+                caseType = None  # Remove precise filter so semantic match can shine
+                
         if query and len(query.strip()) > 2:
             try:
                 # search_judgments returns _format_sources output:
@@ -47,6 +59,9 @@ async def search_judgments(
                     src = str(doc.get("source_file") or "")
                     cat = str(doc.get("category") or doc.get("case_type") or doc.get("caseType") or "")
                     title = str(doc.get("title") or "")
+                    
+                    if "easylaw" not in src.lower():
+                        continue
                     
                     # Hard filter to remove Acts and Ordinances
                     title_l = title.lower()
@@ -99,16 +114,16 @@ async def search_judgments(
                     
                     all_judgments.append({
                         "_id":           mock_id,
-                        "title":         doc.get("title") or "Untitled Judgment",
+                        "title":         _auto_heal_ocr_spaces(doc.get("title") or "Untitled Judgment"),
                         "caseNumber":    doc.get("case_number") or "N/A",
                         "caseType":      doc.get("case_type") or doc.get("category") or doc.get("caseType") or ("Statute" if "Act" in doc.get("title", "") or "Ordinance" in doc.get("title", "") else "Judgment"),
-                        "court":         doc.get("court")       or "Supreme Court of Pakistan",
+                        "court":         _auto_heal_ocr_spaces(doc.get("court")       or "Supreme Court of Pakistan"),
                         "dateOfJudgment": doc.get("date")        or "",
-                        "judge":         doc.get("judge")       or "",
-                        "summary":       doc.get("excerpt")     or "",
+                        "judge":         _auto_heal_ocr_spaces(doc.get("judge")       or ""),
+                        "summary":       _auto_heal_ocr_spaces(doc.get("excerpt")     or ""),
                         "score":         doc.get("similarity")  or 0.0,
                         "journal":       doc.get("journal")     or "",
-                        "parties":       doc.get("parties")     or "",
+                        "parties":       _auto_heal_ocr_spaces(doc.get("parties")     or ""),
                         "lawyers":       doc.get("lawyers")     or "",
                         "statutes":      doc.get("statutes")    or ""
                     })

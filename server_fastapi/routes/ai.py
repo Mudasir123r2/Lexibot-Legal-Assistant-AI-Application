@@ -260,8 +260,21 @@ async def search_judgments(
         
         # Prepare filters for semantic search
         filters = request.filters or {}
+        
+        # Inject Semantic Expansion for complex case types
         if request.caseType:
-            filters["case_type"] = request.caseType
+            ct = request.caseType.lower()
+            types_map = {
+                "civil appeal": "Civil Appeal Judgments: Property dispute appeals, Family law appeals (divorce, maintenance, custody), Contract dispute appeals, Rent and tenancy appeals, Succession / inheritance appeals, Banking & recovery suits (loan recovery appeals)",
+                "criminal appeal": "Criminal Appeal Judgments: Murder / homicide appeals, Theft / robbery appeals, Fraud / cheating cases, Narcotics cases, Bail cancellation or grant appeals, Sentence reduction appeals",
+                "constitution petition": "Constitutional Petition Judgments: Fundamental rights violations, Government action challenges, Illegal detentions, Service matters (jobs, promotions, dismissals), Tax / administrative authority disputes, Public interest litigation"
+            }
+            if ct in types_map:
+                add_str = types_map[ct]
+                request.query = f"{request.query} {add_str}" if request.query else add_str
+                request.caseType = None  # Remove precise filter so semantic match can shine
+            else:
+                filters["case_type"] = request.caseType
         
         # 1. Semantic search using RAG (vector similarity)
         if request.searchMode in ["semantic", "hybrid"]:
@@ -277,6 +290,9 @@ async def search_judgments(
                 cat = str(result.get("category") or result.get("case_type") or result.get("caseType") or "")
                 src = str(result.get("source_file") or "")
                 title_l = title.lower()
+
+                if "easylaw" not in src.lower():
+                    continue
                 
                 # Hard filter to remove Acts and Ordinances
                 if (
@@ -329,12 +345,15 @@ async def search_judgments(
                 
                 # Format fixes
                 import re
+                from utils.formatters import _auto_heal_ocr_spaces
                 title_c = re.sub(r'(?<![a-zA-Z])(?:[a-zA-Z]\s+){3,}[a-zA-Z](?![a-zA-Z])', lambda m: m.group(0).replace(' ', ''), result.get("title", ""))
+                title_c = _auto_heal_ocr_spaces(title_c)
                 title_c = re.sub(r'^(?i).*?(?:bench|nch|\bcourt)\s*,\s*(?:[a-zA-Z\s\.]+\s+)?in\s+', '', title_c).strip()
                 title_c = re.sub(r'^(?i).*?(?:bench|nch)\s*,\s*', '', title_c).strip()
                 result["title"] = title_c
 
                 excerpt_c = re.sub(r'(?<![a-zA-Z])(?:[a-zA-Z]\s+){3,}[a-zA-Z](?![a-zA-Z])', lambda m: m.group(0).replace(' ', ''), result.get("excerpt", ""))
+                excerpt_c = _auto_heal_ocr_spaces(excerpt_c)
                 result["excerpt"] = excerpt_c
                 
                 # Double check year

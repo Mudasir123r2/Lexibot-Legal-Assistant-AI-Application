@@ -140,9 +140,6 @@ REASONING:
 
 HOLDING / DECISION:
 [Full final order with explanation]
-
-JUDGMENT TEXT:
-[Provide the complete, unabridged, word-for-word corrected text of the entire document here without summarizing or cutting it short.]
 """
 
 SYSTEM_PROMPT_EXTRACTION = """You are an advanced Legal Information Extraction model.

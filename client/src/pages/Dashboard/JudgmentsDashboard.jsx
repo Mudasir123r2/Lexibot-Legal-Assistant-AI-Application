@@ -104,6 +104,9 @@ export default function JudgmentsDashboard() {
     let text = typeof content === 'string' ? content : (content?.fullText || content?.content || "");
     if (typeof text !== 'string') text = String(text);
     
+    // Snip everything from JUDGMENT TEXT: onwards
+    text = text.split(/(?:\n|^)\s*JUDGMENT TEXT[:\s-]?/i)[0].trim();
+
     if (!text || text.trim().length === 0) {
       return (
         <div className="flex flex-col items-center justify-center p-20 text-slate-500 border border-white/5 border-dashed rounded-2xl">
@@ -197,8 +200,6 @@ export default function JudgmentsDashboard() {
                    className="w-full bg-transparent border-none text-slate-300 focus:outline-none focus:ring-0"
                  >
                    <option value="" className="bg-neutral-900 text-slate-300">All Judgment Types</option>
-                   <option value="Judgment" className="bg-neutral-900 text-slate-300">Judgment</option>
-                   <option value="Statute" className="bg-neutral-900 text-slate-300">Statute / Act</option>
                    <option value="Civil Appeal" className="bg-neutral-900 text-slate-300">Civil Appeal</option>
                    <option value="Criminal Appeal" className="bg-neutral-900 text-slate-300">Criminal Appeal</option>
                    <option value="Constitution Petition" className="bg-neutral-900 text-slate-300">Constitution Petition</option>
@@ -219,7 +220,7 @@ export default function JudgmentsDashboard() {
                </div>
             </div>
 
-            {/* Custom Paste Section Mini-Banner */}
+            {/* Custom Paste Section Mini-Banner - HIDDEN 
             <div className="w-full bg-neutral-900/50 rounded-xl p-6 ring-1 ring-white/5 shadow-xl mb-12 flex flex-col md:flex-row gap-6 items-center justify-between border-l-4 border-rose-500">
               <div className="flex-1">
                  <h3 className="text-white font-bold text-lg flex items-center gap-2 mb-1">
@@ -239,6 +240,7 @@ export default function JudgmentsDashboard() {
                 </button>
               </div>
             </div>
+            */}
 
             {/* Results Section */}
             {hasSearched && (
