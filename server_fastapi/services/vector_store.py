@@ -285,16 +285,6 @@ class VectorStore:
             logger.error(f"Error searching index: {e}")
             raise
 
-    def get_document_count(self) -> int:
-        return self.index.ntotal
-
-    def clear(self) -> None:
-        self.index.reset()
-        with self._get_conn() as conn:
-            conn.execute("DELETE FROM chunks")
-        self._metadata_cache = None
-        logger.info("Vector store cleared")
-
     def search_keywords(self, query: str, k: int = 5, expand_context: bool = True) -> List[Dict[str, Any]]:
         try:
             import re
@@ -312,7 +302,7 @@ class VectorStore:
             where_stmt = " AND ".join(where_clauses)
             
             with self._get_conn() as conn:
-                rows = conn.execute(f"SELECT MIN(row_id) as row_id, mock_id FROM chunks WHERE {where_stmt} GROUP BY mock_id LIMIT {k * 2}").fetchall()
+                rows = conn.execute(f"SELECT MIN(row_id) as row_id, mock_id FROM chunks WHERE {where_stmt} GROUP BY mock_id LIMIT {k * 2}", params).fetchall()
 
             if not rows:
                 return []
@@ -328,7 +318,7 @@ class VectorStore:
             
             placeholders = ",".join("?" * len(fetch_ids))
             with self._get_conn() as conn:
-                full_rows = conn.execute(f"SELECT * FROM chunks WHERE row_id IN ({placeholders})").fetchall()
+                full_rows = conn.execute(f"SELECT * FROM chunks WHERE row_id IN ({placeholders})", list(fetch_ids)).fetchall()
                 
             row_map = {int(r["row_id"]): self._row_to_dict(r) for r in full_rows}
             
@@ -357,6 +347,16 @@ class VectorStore:
             logger.error(f"Error keyword searching index: {e}")
             raise
 
+    def get_document_count(self) -> int:
+        return self.index.ntotal
+
+    def clear(self) -> None:
+        self.index.reset()
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM chunks")
+        self._metadata_cache = None
+        logger.info("✅ Vector store cleared")
+
     def save_index(self) -> None:
         try:
             index_file = self.index_path / "faiss.index"
@@ -383,6 +383,7 @@ class VectorStore:
         with self._get_conn() as conn:
             db_count = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
         return {
+            "total_documents": self.index.ntotal,
             "total_vectors": self.index.ntotal,
             "total_metadata_chunks": db_count,
             "dimension": self.dimension,
