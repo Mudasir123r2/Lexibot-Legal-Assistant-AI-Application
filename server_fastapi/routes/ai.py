@@ -125,7 +125,7 @@ async def chat(
         if faq_match:
             response_text = faq_match
             confidence = 100.0  # Perfect confidence for pre-approved answers
-            sources = [{"title": "LexiBot Verified Knowledge Base", "type": "FAQ"}]
+            sources = []  # Keep FAQ origin invisible per user request
             logger.info("Chat query intercepted by Pre-set FAQ Knowledge Base.")
         else:
             explicit_text = None
@@ -144,6 +144,10 @@ async def chat(
                 except Exception:
                     pass
 
+            # Ensure we pull the user's preferred tone from DB settings
+            user_doc = await db.users.find_one({"_id": current_user.id})
+            tone_pref = user_doc.get("preferences", {}).get("tone", "formal") if user_doc else "formal"
+
             # Use RAG pipeline for response generation with user role
             rag_result = rag.query(
                 question=request.message,
@@ -151,7 +155,8 @@ async def chat(
                 include_sources=True,
                 user_role=current_user.role,
                 explicit_context=explicit_text,
-                query_type=query_type
+                query_type=query_type,
+                tone=tone_pref
             )
             
             response_text = rag_result["answer"]

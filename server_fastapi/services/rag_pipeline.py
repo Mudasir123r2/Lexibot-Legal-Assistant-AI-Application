@@ -41,13 +41,14 @@ class RAGPipeline:
         include_sources: bool = True,
         user_role: str = "client",
         explicit_context: Optional[str] = None,
-        query_type: str = "rag_chat"
+        query_type: str = "rag_chat",
+        tone: str = "formal"
     ) -> Dict[str, Any]:
         """
         Process user query using RAG or explicit overriding context.
         """
         try:
-            logger.info(f"Processing RAG query for {user_role}: {question[:100]}...")
+            logger.info(f"Processing RAG query for {user_role} with {tone} tone...")
             
             # 3.7 (UC-03): QUERY TOO VAGUE FALLBACK
             if len(question.strip()) < 10:
@@ -71,7 +72,8 @@ class RAGPipeline:
                 answer = self.llm_service.generate_with_context(
                     query=question,
                     context_documents=[synthetic_doc],
-                    user_role=user_role
+                    user_role=user_role,
+                    tone=tone
                 )
                 
                 return {
@@ -160,7 +162,8 @@ class RAGPipeline:
             answer = self.llm_service.generate_with_context(
                 query=question,
                 context_documents=filtered_docs,
-                user_role=user_role
+                user_role=user_role,
+                tone=tone
             )
             
             # Calculate average confidence from hybrid retrieval scores

@@ -245,7 +245,8 @@ class LLMService:
         context_documents: List[Dict[str, Any]],
         max_tokens: int = 1024,
         temperature: float = 0.3,
-        user_role: str = "client"
+        user_role: str = "client",
+        tone: str = "formal"
     ) -> str:
         context_parts = []
         for doc in context_documents[:5]:
@@ -274,10 +275,23 @@ class LLMService:
             # Wrap context securely to prevent prompt injection
             context_parts.append(f"{header}\n\n```text\n{content}\n```")
             
-        context_text = "\n\n" + "=" * 80 + "\n\n".join(context_parts)
+        if context_parts:
+            context_text = "\n\n" + "=" * 80 + "\n\n".join(context_parts)
+        else:
+            context_text = "No context documents provided. Rely on general legal knowledge and assist the user."
+
+        # Get tone from kwargs or fall back to formal
+        base_system = SYSTEM_PROMPT_ADVOCATE if user_role == "advocate" else SYSTEM_PROMPT_CLIENT
+
+        tone_instruction = ""
+        if tone == "casual":
+            tone_instruction = "\n\nTONE INSTRUCTION: Speak in a friendly, conversational, and casual tone. Avoid overly strict or rigid academic jargon when responding, but remain accurate."
+        else:
+            tone_instruction = "\n\nTONE INSTRUCTION: Maintain a highly formal, academic, and professional legal tone."
+            
+        system_prompt = base_system + tone_instruction
         
-        system_prompt = SYSTEM_PROMPT_ADVOCATE if user_role == "advocate" else SYSTEM_PROMPT_CLIENT
-        prompt = f"CONTEXT DOCUMENTS:\n{context_text}\n\nUSER QUESTION: {query}"
+        prompt = f"CONTEXT DOCUMENTS:\n{context_text}\n\nUSER QUESTION: {query}\n\nNOTE: If the user's question is a general inquiry (e.g., 'can you explain a complex legal document?'), do NOT refer to any random provided context documents if they don't explicitly match the query intent. Do NOT complain about empty context documents. Just answer the user's general conversational question directly and helpfully."
         
         return self.generate_response(prompt, system_prompt, max_tokens, temperature)
 
