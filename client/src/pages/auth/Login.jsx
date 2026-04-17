@@ -17,7 +17,7 @@ const LoginSchema = Yup.object({
   remember: Yup.boolean(),
 });
 
-export default function Login() {
+export default function Login({ isAdminLogin = false }) {
   const { login } = useContext(AuthContext);
   const navigate = useNavigate();
   const [showPass, setShowPass] = useState(false);
@@ -45,12 +45,12 @@ export default function Login() {
               <div className="h-10 w-10 rounded-xl bg-neutral-800 text-indigo-300 flex items-center justify-center ring-1 ring-white/10">
                 <FaBalanceScale className="text-lg" />
               </div>
-              <span className="text-2xl font-semibold text-slate-100">LexiBot</span>
+              <span className="text-2xl font-semibold text-slate-100">{isAdminLogin ? "LexiBot Admin" : "LexiBot"}</span>
             </div>
 
-            <h1 className="text-xl font-bold text-center text-white">Welcome to LexiBot</h1>
+            <h1 className="text-xl font-bold text-center text-white">{isAdminLogin ? "Admin Login" : "Welcome to LexiBot"}</h1>
             <p className="text-center text-slate-400 text-sm mb-6">
-              Secure access for clients, advocates, and admins.
+              {isAdminLogin ? "Secure access for administrators only." : "Secure access for clients and advocates."}
             </p>
 
             <Formik
@@ -157,12 +157,14 @@ export default function Login() {
                                      bg-white/10" />
                   </button>
 
-                  <p className="text-center text-sm text-slate-400">
-                    Don’t have an account?{" "}
-                    <Link to="/register" className="text-indigo-300 hover:text-indigo-200 hover:underline">
-                      Sign Up
-                    </Link>
-                  </p>
+                  {!isAdminLogin && (
+                    <p className="text-center text-sm text-slate-400">
+                      Don’t have an account?{" "}
+                      <Link to="/register" className="text-indigo-300 hover:text-indigo-200 hover:underline">
+                        Sign Up
+                      </Link>
+                    </p>
+                  )}
                 </Form>
               )}
             </Formik>

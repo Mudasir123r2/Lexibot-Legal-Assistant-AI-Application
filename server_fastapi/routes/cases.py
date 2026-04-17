@@ -9,6 +9,7 @@ from typing import List
 
 router = APIRouter(prefix="/api/cases", tags=["Cases"])
 
+@router.get("", response_model=List[CaseResponse])
 @router.get("/", response_model=List[CaseResponse])
 async def get_user_cases(
     current_user: TokenData = Depends(get_current_user),
@@ -16,7 +17,7 @@ async def get_user_cases(
 ):
     """Get all cases for the authenticated user"""
     try:
-        cases_cursor = db.cases.find({"userId": current_user.id}).sort("createdAt", -1)
+        cases_cursor = db.cases.find({"userId": str(current_user.id)}).sort("createdAt", -1)
         cases = await cases_cursor.to_list(length=None)
         
         # Convert ObjectId to string for response
@@ -42,7 +43,7 @@ async def get_case(
     try:
         case = await db.cases.find_one({
             "_id": ObjectId(case_id),
-            "userId": current_user.id
+            "userId": str(current_user.id)
         })
         
         if not case:
@@ -64,6 +65,7 @@ async def get_case(
             detail="Failed to fetch case"
         )
 
+@router.post("", response_model=CaseResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=CaseResponse, status_code=status.HTTP_201_CREATED)
 async def create_case(
     case_data: CaseCreate,
@@ -73,7 +75,7 @@ async def create_case(
     """Create a new case"""
     try:
         case_doc = {
-            "userId": ObjectId(current_user.id),
+            "userId": str(current_user.id),
             "title": case_data.title,
             "caseType": case_data.caseType.value,
             "description": case_data.description,
@@ -97,7 +99,6 @@ async def create_case(
         
         result = await db.cases.insert_one(case_doc)
         case_doc["_id"] = str(result.inserted_id)
-        case_doc["userId"] = str(case_doc["userId"])
         
         return case_doc
         
@@ -131,7 +132,7 @@ async def update_case(
                     update_data[key] = value
         
         result = await db.cases.find_one_and_update(
-            {"_id": ObjectId(case_id), "userId": current_user.id},
+            {"_id": ObjectId(case_id), "userId": str(current_user.id)},
             {"$set": update_data},
             return_document=True
         )
@@ -165,7 +166,7 @@ async def delete_case(
     try:
         result = await db.cases.delete_one({
             "_id": ObjectId(case_id),
-            "userId": current_user.id
+            "userId": str(current_user.id)
         })
         
         if result.deleted_count == 0:

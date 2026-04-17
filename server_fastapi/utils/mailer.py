@@ -40,6 +40,24 @@ async def send_reset_email(to: str, reset_url: str):
         print(f"Failed to send reset email: {e}")
         raise
 
+async def send_email(to_email: str, subject: str, html_content: str):
+    """Send a generic email"""
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = settings.MAIL_FROM.strip('"')
+    msg['To'] = to_email
+    
+    part = MIMEText(html_content, 'html')
+    msg.attach(part)
+    
+    try:
+        smtp = create_transport()
+        smtp.sendmail(settings.MAIL_FROM.strip('"'), to_email, msg.as_string())
+        smtp.quit()
+    except Exception as e:
+        print(f"Failed to send email to {to_email}: {e}")
+        raise
+
 async def send_verification_email(to: str, verification_url: str):
     """Send email verification email"""
     msg = MIMEMultipart('alternative')

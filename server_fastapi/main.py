@@ -93,7 +93,8 @@ app.include_router(feedback.router)
 # Handle unknown routes
 @app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 async def catch_all(path_name: str):
-    return {"message": "Route not found"}, 404
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=404, content={"message": "Route not found"})
 
 if __name__ == "__main__":
     import uvicorn

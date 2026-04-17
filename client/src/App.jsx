@@ -30,6 +30,14 @@ export default function App() {
             }
           />
           <Route
+            path="/admin-login"
+            element={
+              <GuestRoute>
+                <Login isAdminLogin={true} />
+              </GuestRoute>
+            }
+          />
+          <Route
             path="/register"
             element={
               <GuestRoute>
@@ -65,7 +73,7 @@ export default function App() {
           <Route
             path="/cases"
             element={
-              <PrivateRoute>
+              <PrivateRoute roles={["admin", "advocate"]}>
                 <CasesDashboard />
               </PrivateRoute>
             }
@@ -89,7 +97,7 @@ export default function App() {
           <Route
             path="/reminders"
             element={
-              <PrivateRoute>
+              <PrivateRoute roles={["admin", "advocate"]}>
                 <RemindersDashboard />
               </PrivateRoute>
             }

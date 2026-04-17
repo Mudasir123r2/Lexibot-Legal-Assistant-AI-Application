@@ -36,7 +36,7 @@ export default function CasesDashboard() {
     try {
       setLoading(true);
       const { data } = await api.get("/cases");
-      setCases(Array.isArray(data) ? data : []);
+      setCases(Array.isArray(data) ? data.filter(c => c.title && c.title.trim() !== '') : []);
     } catch (err) {
       console.error("Error fetching cases:", err);
     } finally {
@@ -87,13 +87,18 @@ export default function CasesDashboard() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      let payload = { ...formData };
+      if (typeof payload.tags === 'string') {
+        payload.tags = payload.tags.split(',').map(t => t.trim()).filter(t => t);
+      }
+      if (!payload.filingDate) delete payload.filingDate;
+      if (!payload.hearingDate) delete payload.hearingDate;
+      if (!payload.deadline) delete payload.deadline;
+
       if (editingCase) {
-        await api.put(`/cases/${editingCase._id}`, formData);
+        await api.put(`/cases/${editingCase._id}`, payload);
       } else {
-        await api.post("/cases", {
-          ...formData,
-          tags: formData.tags.split(",").map(t => t.trim()).filter(t => t)
-        });
+        await api.post("/cases", payload);
       }
       closeDrawer();
       fetchCases();

@@ -9,6 +9,7 @@ from typing import List, Optional
 
 router = APIRouter(prefix="/api/reminders", tags=["Reminders"])
 
+@router.get("", response_model=List[ReminderResponse])
 @router.get("/", response_model=List[ReminderResponse])
 async def get_reminders(
     upcoming: Optional[bool] = None,
@@ -56,6 +57,7 @@ async def get_reminders(
             detail="Failed to fetch reminders"
         )
 
+@router.post("", response_model=ReminderResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=ReminderResponse, status_code=status.HTTP_201_CREATED)
 async def create_reminder(
     reminder_data: ReminderCreate,
@@ -65,8 +67,8 @@ async def create_reminder(
     """Create a new reminder"""
     try:
         reminder_doc = {
-            "userId": ObjectId(current_user.id),
-            "caseId": ObjectId(reminder_data.caseId) if reminder_data.caseId else None,
+            "userId": str(current_user.id),
+            "caseId": str(reminder_data.caseId) if reminder_data.caseId else None,
             "title": reminder_data.title,
             "description": reminder_data.description,
             "dueDate": reminder_data.dueDate,
@@ -84,9 +86,6 @@ async def create_reminder(
         
         result = await db.reminders.insert_one(reminder_doc)
         reminder_doc["_id"] = str(result.inserted_id)
-        reminder_doc["userId"] = str(reminder_doc["userId"])
-        if reminder_doc.get("caseId"):
-            reminder_doc["caseId"] = str(reminder_doc["caseId"])
         
         return reminder_doc
         
@@ -112,17 +111,22 @@ async def update_reminder(
         for key, value in update_dict.items():
             if value is not None:
                 if key == "caseId":
-                    update_data[key] = ObjectId(value) if value else None
+                    update_data[key] = str(value) if value else None
                 elif hasattr(value, "value"):  # Enum
                     update_data[key] = value.value
                 else:
                     update_data[key] = value
         
+        # If the dueDate or notification rule is being updated, reset the notification status so they get alerted again!
+        if "dueDate" in update_dict or "notifyBeforeDays" in update_dict:
+            update_data["notificationSent"] = False
+            update_data["notificationSentAt"] = None
+        
         if reminder_update.isCompleted and not update_data.get("completedAt"):
             update_data["completedAt"] = datetime.utcnow()
         
         result = await db.reminders.find_one_and_update(
-            {"_id": ObjectId(reminder_id), "userId": current_user.id},
+            {"_id": ObjectId(reminder_id), "userId": str(current_user.id)},
             {"$set": update_data},
             return_document=True
         )

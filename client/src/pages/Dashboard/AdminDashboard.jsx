@@ -460,12 +460,12 @@ export default function AdminDashboard() {
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-3 mb-2">
-                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${feedback.rating === "positive"
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${feedback.rating >= 4
                                   ? "bg-green-900/30 text-green-300 border border-green-500/30"
                                   : "bg-red-900/30 text-red-300 border border-red-500/30"
                                 }`}>
-                                {feedback.rating === "positive" ? <FaStar className="text-green-400" /> : <FaTimesCircle />}
-                                {feedback.rating === "positive" ? "Positive" : "Negative"}
+                                {feedback.rating >= 4 ? <FaStar className="text-green-400" /> : <FaTimesCircle />}
+                                {feedback.rating >= 4 ? "Positive" : "Negative"}
                               </span>
                               <span className="text-xs text-slate-400 capitalize">{feedback.feedbackType}</span>
                               <span className={`inline-flex px-2 py-1 rounded-lg text-xs font-medium ${feedback.status === "pending"

@@ -18,6 +18,7 @@ def escape_regex(text: str) -> str:
     """Escape special regex characters"""
     return re.escape(text)
 
+@router.get("", response_model=UserResponse)
 @router.get("/", response_model=UserResponse)
 async def get_profile(
     current_user: TokenData = Depends(get_current_user),
@@ -54,6 +55,7 @@ async def get_profile(
             detail="Failed to fetch profile"
         )
 
+@router.put("", response_model=UserResponse)
 @router.put("/", response_model=UserResponse)
 async def update_profile(
     profile_update: UserUpdate,

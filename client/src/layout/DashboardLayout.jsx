@@ -1,11 +1,43 @@
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
-import { useContext, useState } from "react";
+import { useContext, useState, useEffect } from "react";
 import { AuthContext } from "../context/AuthContext";
+import api from "../api/http";
+import { FaBell, FaTimes, FaInbox } from "react-icons/fa";
+import { Link } from "react-router-dom";
 
 export default function DashboardLayout({ children }) {
   const { user } = useContext(AuthContext);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+
+  useEffect(() => {
+    // Only fetch for lawyer/advocate or admin
+    if (user?.role === "advocate" || user?.role === "admin") {
+      const fetchReminders = async () => {
+        try {
+          const { data } = await api.get("/reminders");
+          if (Array.isArray(data)) {
+            const now = new Date();
+            const overdueOrDue = data.filter(r => {
+              if (r.isCompleted) return false;
+              const due = new Date(r.dueDate);
+              if (due <= now) return true; // Overdue
+              // Due today
+              return due.toDateString() === now.toDateString();
+            });
+            
+            // Sort by most urgent/overdue first
+            overdueOrDue.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+            setNotifications(overdueOrDue);
+          }
+        } catch (e) {}
+      };
+      
+      fetchReminders();
+    }
+  }, [user]);
 
   return (
     <div className="relative min-h-[100dvh] h-[100dvh] bg-[#0a0a0b] text-slate-100 overflow-hidden">
@@ -26,7 +58,11 @@ export default function DashboardLayout({ children }) {
         <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
           {/* Sticky navbar */}
           <header className="sticky top-0 z-20 shrink-0 border-b border-white/10 bg-neutral-900/40 backdrop-blur-xl shadow-lg">
-            <Navbar />
+            <Navbar 
+               notifications={notifications} 
+               isNotificationsOpen={isNotificationsOpen} 
+               setIsNotificationsOpen={setIsNotificationsOpen} 
+            />
           </header>
 
           <main className="flex-1 overflow-y-auto w-full flex flex-col">

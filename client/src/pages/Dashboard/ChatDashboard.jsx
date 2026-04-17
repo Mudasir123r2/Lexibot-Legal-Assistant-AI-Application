@@ -1,23 +1,29 @@
+import { useContext } from "react";
+import { AuthContext } from "../../context/AuthContext";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { FaComments, FaSearch, FaBrain, FaCommentDots, FaClipboardList } from "react-icons/fa";
 import { useSearchParams } from "react-router-dom";
 import ChatTab from "./components/ChatTab";
-import CaseLegalSearch from "./components/CaseLegalSearch";
 import OutcomePrediction from "./components/OutcomePrediction";
 import Feedback from "./components/Feedback";
 import ClientGuidance from "./components/ClientGuidance";
 
 export default function ChatDashboard() {
+  const { user } = useContext(AuthContext);
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = searchParams.get("tab") || "chat";
 
-  const tabs = [
+  const allTabs = [
     { id: "chat", label: "Chat", icon: FaComments },
-    { id: "search", label: "Case Search", icon: FaSearch },
     { id: "prediction", label: "Outcome Prediction", icon: FaBrain },
     { id: "guidance", label: "Client Guidance", icon: FaClipboardList },
     { id: "feedback", label: "Feedback", icon: FaCommentDots },
   ];
+
+  const tabs = allTabs.filter(tab => {
+    if (tab.id === "guidance" && user?.role === "advocate") return false;
+    return true;
+  });
 
   return (
     <DashboardLayout>
@@ -55,9 +61,8 @@ export default function ChatDashboard() {
         <div className="relative flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto">
             {activeTab === "chat" && <ChatTab />}
-            {activeTab === "search" && <CaseLegalSearch />}
             {activeTab === "prediction" && <OutcomePrediction />}
-            {activeTab === "guidance" && <ClientGuidance />}
+            {activeTab === "guidance" && user?.role !== "advocate" && <ClientGuidance />}
             {activeTab === "feedback" && <Feedback />}
           </div>
         </div>
