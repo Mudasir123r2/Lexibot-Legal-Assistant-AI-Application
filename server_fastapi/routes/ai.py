@@ -156,7 +156,8 @@ async def chat(
                 user_role=current_user.role,
                 explicit_context=explicit_text,
                 query_type=query_type,
-                tone=tone_pref
+                tone=tone_pref,
+                chat_history=existing_session.get("messages", []) if existing_session else []
             )
             
             response_text = rag_result["answer"]

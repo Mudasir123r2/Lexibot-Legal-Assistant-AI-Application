@@ -42,22 +42,15 @@ class RAGPipeline:
         user_role: str = "client",
         explicit_context: Optional[str] = None,
         query_type: str = "rag_chat",
-        tone: str = "formal"
+        tone: str = "formal",
+        chat_history: List[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Process user query using RAG or explicit overriding context.
+        Process user query using RAG, chat history, or explicit overriding context.
         """
         try:
             logger.info(f"Processing RAG query for {user_role} with {tone} tone...")
             
-            # 3.7 (UC-03): QUERY TOO VAGUE FALLBACK
-            if len(question.strip()) < 10:
-                return {
-                    "answer": "Could you provide more details about your legal query?",
-                    "sources": [],
-                    "confidence": 0.0
-                }
-                
             # Direct Context Bypass - If frontend provides explicit text, skip FAISS!
             if explicit_context:
                 synthetic_doc = {
@@ -73,7 +66,8 @@ class RAGPipeline:
                     query=question,
                     context_documents=[synthetic_doc],
                     user_role=user_role,
-                    tone=tone
+                    tone=tone,
+                    chat_history=chat_history
                 )
                 
                 return {
@@ -163,7 +157,8 @@ class RAGPipeline:
                 query=question,
                 context_documents=filtered_docs,
                 user_role=user_role,
-                tone=tone
+                tone=tone,
+                chat_history=chat_history
             )
             
             # Calculate average confidence from hybrid retrieval scores

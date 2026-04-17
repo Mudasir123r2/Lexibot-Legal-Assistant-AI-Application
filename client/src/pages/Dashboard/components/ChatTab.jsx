@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { FiSend, FiLoader, FiTrash2, FiMessageSquare, FiChevronLeft, FiChevronRight, FiMic, FiMicOff, FiThumbsUp, FiThumbsDown, FiVolume2, FiVolumeX } from "react-icons/fi";
 import api from "../../../api/http";
 
-export default function ChatTab({ contextData = null, initialMessage = null, hideSidebar = false, selectedDocAvailable = false }) {
+export default function ChatTab({ contextData = null, initialMessage = null, hideSidebar = false, selectedDocAvailable = false, isMainDashboard = false, externalShowHistory, setExternalShowHistory }) {
   const getInitialGreeting = () => {
     if (contextData?.title) {
         return `The judgment "${contextData.title}" has been successfully loaded into my active context.\n\nI am prepared to assist you with the analysis of this document. Please let me know if you require a summary, extraction of key points, or answers to specific questions regarding this case.`;
@@ -22,7 +22,9 @@ export default function ChatTab({ contextData = null, initialMessage = null, hid
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [sessions, setSessions] = useState([]);
-  const [showHistory, setShowHistory] = useState(false);
+  const [internalShowHistory, setInternalShowHistory] = useState(false);
+  const showHistory = externalShowHistory !== undefined ? externalShowHistory : internalShowHistory;
+  const setShowHistory = setExternalShowHistory !== undefined ? setExternalShowHistory : setInternalShowHistory;
   const [isListening, setIsListening] = useState(false);
   const [feedbackGiven, setFeedbackGiven] = useState({});
   const [showCommentInput, setShowCommentInput] = useState({});
@@ -319,29 +321,32 @@ export default function ChatTab({ contextData = null, initialMessage = null, hid
       </div>
       )}
 
-      {/* Toggle Button - Draggable Handle Style */}
-      {!hideSidebar && (
+      {/* Toggle Button - Draggable Handle Style (Document View) or Top Fixed Button (Main Lexibot Dashboard) */}
+      {!hideSidebar && !isMainDashboard && (
         <div className="relative shrink-0 w-8 flex items-center justify-center">
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className="absolute top-1/2 -translate-y-1/2 h-24 w-6 rounded-full bg-gradient-to-br from-indigo-600/20 to-indigo-700/20 hover:from-indigo-600/30 hover:to-indigo-700/30 ring-1 ring-white/10 hover:ring-white/20 backdrop-blur-xl flex items-center justify-center text-slate-400 hover:text-white transition-all shadow-lg hover:shadow-xl group cursor-pointer z-10"
-          title={showHistory ? "Hide chat history" : "Show chat history"}
-        >
-          <div className="flex flex-col items-center gap-1">
-            {showHistory ? (
-              <FiChevronLeft className="text-sm group-hover:scale-110 transition-transform" />
-            ) : (
-              <FiChevronRight className="text-sm group-hover:scale-110 transition-transform" />
-            )}
-            <div className="flex flex-col gap-0.5">
-              <div className="w-3 h-0.5 rounded-full bg-slate-500 group-hover:bg-slate-300 transition-colors"></div>
-              <div className="w-3 h-0.5 rounded-full bg-slate-500 group-hover:bg-slate-300 transition-colors"></div>
-              <div className="w-3 h-0.5 rounded-full bg-slate-500 group-hover:bg-slate-300 transition-colors"></div>
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="absolute top-1/2 -translate-y-1/2 h-24 w-6 rounded-full bg-gradient-to-br from-indigo-600/20 to-indigo-700/20 hover:from-indigo-600/30 hover:to-indigo-700/30 ring-1 ring-white/10 hover:ring-white/20 backdrop-blur-xl flex items-center justify-center text-slate-400 hover:text-white transition-all shadow-lg hover:shadow-xl group cursor-pointer z-10"
+            title={showHistory ? "Hide chat history" : "Show chat history"}
+          >
+            <div className="flex flex-col items-center gap-1">
+              {showHistory ? (
+                <FiChevronLeft className="text-sm group-hover:scale-110 transition-transform" />
+              ) : (
+                <FiChevronRight className="text-sm group-hover:scale-110 transition-transform" />
+              )}
+              <div className="flex flex-col gap-0.5">
+                <div className="w-3 h-0.5 rounded-full bg-slate-500 group-hover:bg-slate-300 transition-colors"></div>
+                <div className="w-3 h-0.5 rounded-full bg-slate-500 group-hover:bg-slate-300 transition-colors"></div>
+                <div className="w-3 h-0.5 rounded-full bg-slate-500 group-hover:bg-slate-300 transition-colors"></div>
+              </div>
             </div>
-          </div>
-        </button>
-      </div>
+          </button>
+        </div>
       )}
+
+      {/* Removed the Main Lexibot Chat Top Fixed Button -- Moved to ChatDashboard Navbar */}
+
 
       {/* Chat Panel */}
       <div className="flex-1 min-w-0 h-full flex flex-col">

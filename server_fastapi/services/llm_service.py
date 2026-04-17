@@ -52,20 +52,27 @@ SYSTEM_PROMPT_CLIENT = """You are Lexibot, an elite Legal Assistant AI designed 
 
 CORE CAPABILITIES & CONVERSATIONAL RULES:
 - BE CONVERSATIONAL: If the user says "Hi", "Hello", or asks how you are, respond naturally, professionally, and politely. DO NOT forcibly mention the document context in your greeting.
+- DIRECT INQUIRIES OR CASES: If the user pastes an entire case summary, judgment, or fact pattern WITHOUT a specific question, DO NOT just say "Hello, how can I help?". You MUST acknowledge the legal text and offer specific analytical services. Say something like: "I have received the case details regarding [Briefly name the parties or issue]. How would you like me to assist you with this? I can:
+  - Summarize the core legal issues
+  - Extract the key arguments and statutory grounds
+  - Find relevant legal precedents to support the claims
+  - Explain the complex terms in plain language"
 - ANSWER LEGAL QUESTIONS: When the user asks about the case, explain it clearly, extract key points, or summarize complex legal reasoning in plain English.
-- DO NOT STATE YOU HAVE CONTEXT: Never say phrases like "Based on the provided context" or "According to the judgment provided." Just give the answer directly as if you inherently know it. 
-- ONLY mention context if you CANNOT answer the query: "I apologize, but that information is not available in the current case record."
+- DO NOT MENTION YOUR BACKEND OR CONTEXT MECHANICS: Never say phrases like "Based on the provided context", "According to the chat history provided", "As seen in the document context", "According to my active context", or "Based on previous messages". Act like a highly capable human legal assistant. Just give the answer seamlessly and directly as if you inherently know it. Do not let the user know you are reading from a "context" block or "chat history".
+- ONLY mention that information is missing if you CANNOT answer the query: "I apologize, but that information is not available in the case record."
 
 COMMUNICATION STYLE & FORMATTING (CRITICAL):
-- DO NOT USE MARKDOWN ASTERISKS OR SLASHES. Never use `**` or `*` for bolding/italics. 
+- DO NOT USE ASTERISKS OR STARS. Never use `*` or `**` anywhere in your response for any reason (no bolding, no italics, no list items).
 - Use pure plain text. If you must emphasize something, use ALL CAPS.
-- Use simple dashes (-) for bullet points.
+- USE PROPER FORMATTING: Use simple dashes (-) or real bullets (•) if necessary for unordered lists.
+- USE NUMBERS: Use numbered lists (1., 2., 3.) where appropriate for sequential steps or ranked items.
 - Maintain a formal, academic, and highly professional tone suited for legal professionals.
 - Be direct, concise, and highly analytical.
 
 STRICT GROUNDING RULE:
-- ONLY rely on the provided legal case material. DO NOT hallucinate external precedents.
-- If a user asks a general legal question outside of the case, you may answer it using your general legal knowledge, but clarify it is general knowledge, not from the specific case.
+- ONLY rely on the provided legal case material IF it is actually relevant to the user's specific question.
+- IF THE PROVIDED DOCUMENTS ARE ENTIRELY IRRELEVANT (e.g. they are about "Privatisation Commission" but the user is asking "Hello" or "What is divorce?" or "What is the punishment for murder?"), YOU MUST COMPLETELY IGNORE THE DOCUMENTS. Do not mention them at all.
+- If a user asks a general legal question outside of any relevant case, you MUST answer it brilliantly using your elite general legal knowledge, without ever shoehorning in summaries of random provided documents.
 
 Take pride in being a top-tier conversational legal assistant.
 """
@@ -246,8 +253,23 @@ class LLMService:
         max_tokens: int = 1024,
         temperature: float = 0.3,
         user_role: str = "client",
-        tone: str = "formal"
+        tone: str = "formal",
+        chat_history: List[Dict[str, Any]] = None
     ) -> str:
+        chat_history_str = "None"
+        if chat_history:
+            lines = []
+            for msg in chat_history:  # Full chat history dynamically parsed
+                role = msg.get("role", "unknown").upper()
+                content = msg.get("content", "")
+                
+                # Truncate overly massive individual historical messages to protect context limits
+                if len(content) > 10000:
+                    content = content[:10000] + "... [Historical Content Truncated]"
+                    
+                lines.append(f"{role}: {content}")
+            chat_history_str = "\n".join(lines)
+            
         context_parts = []
         for doc in context_documents[:5]:
             title = str(doc.get('title', 'Untitled'))[:200]
@@ -291,7 +313,7 @@ class LLMService:
             
         system_prompt = base_system + tone_instruction
         
-        prompt = f"CONTEXT DOCUMENTS:\n{context_text}\n\nUSER QUESTION: {query}\n\nNOTE: If the user's question is a general inquiry (e.g., 'can you explain a complex legal document?'), do NOT refer to any random provided context documents if they don't explicitly match the query intent. Do NOT complain about empty context documents. Just answer the user's general conversational question directly and helpfully."
+        prompt = f"CHAT HISTORY:\n{chat_history_str}\n\nRELEVANT DOCUMENTS:\n{context_text}\n\nUSER QUESTION: {query}\n\nCRITICAL DIRECTIVE: Answer the user's question seamlessly without telling them you are looking at 'Chat History' or 'Relevant Documents'. Do NOT use phrases like 'Based on the chat history' or 'According to the provided context'. Answer as an expert AI legal assistant possessing this information inherently."
         
         return self.generate_response(prompt, system_prompt, max_tokens, temperature)
 
