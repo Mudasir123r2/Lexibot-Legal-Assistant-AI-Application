@@ -285,6 +285,68 @@ class VectorStore:
             logger.error(f"Error searching index: {e}")
             raise
 
+    def search_keywords(self, query: str, k: int = 5, expand_context: bool = True) -> List[Dict[str, Any]]:
+        try:
+            import re
+            words = [w for w in re.split(r'\s+', query.strip()) if len(w) > 2 and w.lower() not in {"the", "and", "for", "with", "case", "cases", "court", "high"}]
+            if not words:
+                words = [query.strip()]
+
+            where_clauses = []
+            params = []
+            for word in words:
+                like_pattern = f"%{word}%"
+                where_clauses.append("(title LIKE ? OR excerpt LIKE ? OR case_number LIKE ? OR court LIKE ?)")
+                params.extend([like_pattern, like_pattern, like_pattern, like_pattern])
+
+            where_stmt = " AND ".join(where_clauses)
+            
+            with self._get_conn() as conn:
+                rows = conn.execute(f"SELECT MIN(row_id) as row_id, mock_id FROM chunks WHERE {where_stmt} GROUP BY mock_id LIMIT {k * 2}", params).fetchall()
+
+            if not rows:
+                return []
+
+            row_ids = [int(r["row_id"]) for r in rows]
+            
+            fetch_ids = set(row_ids)
+            if expand_context:
+                for rid in row_ids:
+                    fetch_ids.add(rid - 1)
+                    fetch_ids.add(rid + 1)
+            fetch_ids = [r for r in fetch_ids if r > 0]
+            
+            placeholders = ",".join("?" * len(fetch_ids))
+            with self._get_conn() as conn:
+                full_rows = conn.execute(f"SELECT * FROM chunks WHERE row_id IN ({placeholders})", list(fetch_ids)).fetchall()
+                
+            row_map = {int(r["row_id"]): self._row_to_dict(r) for r in full_rows}
+            
+            results = []
+            for rid in row_ids:
+                if rid in row_map:
+                    result = row_map[rid].copy()
+                    if expand_context:
+                         source_file = result.get("source_file")
+                         expanded_excerpt = result.get("excerpt", "")
+                         prev_chunk = row_map.get(rid - 1)
+                         if prev_chunk and prev_chunk.get("source_file") == source_file:
+                             expanded_excerpt = "(Previous Context):\n" + str(prev_chunk.get("excerpt", "")) + "\n\n" + expanded_excerpt
+                         next_chunk = row_map.get(rid + 1)
+                         if next_chunk and next_chunk.get("source_file") == source_file:
+                             expanded_excerpt = expanded_excerpt + "\n\n(Next Context):\n" + str(next_chunk.get("excerpt", ""))
+                         result["excerpt"] = expanded_excerpt
+                    
+                    result["score"] = 1.0
+                    result["similarity"] = 1.0
+                    results.append(result)
+
+            logger.info(f"Found {len(results)} exact keyword documents in SQLite chunks.")
+            return results[:k]
+        except Exception as e:
+            logger.error(f"Error keyword searching index: {e}")
+            raise
+
     def get_document_count(self) -> int:
         return self.index.ntotal
 

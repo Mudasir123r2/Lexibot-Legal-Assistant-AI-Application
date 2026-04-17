@@ -222,6 +222,25 @@ class RAGPipeline:
             logger.error(f"Error in judgment search: {str(e)}")
             return []
     
+    def search_keywords_judgments(
+        self,
+        query: str,
+        top_k: int = 10,
+        filters: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        try:
+            results = self.vector_store.search_keywords(query, k=top_k * 2)
+            
+            if filters:
+                results = self._apply_filters(results, filters)
+            
+            results = results[:top_k]
+            return self._format_sources(results)
+            
+        except Exception as e:
+            logger.error(f"Error in keyword judgment search: {str(e)}")
+            return []
+
     def summarize_judgment(self, judgment_id: str, judgment_text: str) -> str:
         """
         Generate summary of a specific judgment.

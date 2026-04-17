@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import DashboardLayout from "../../layout/DashboardLayout";
 import { FaBookOpen, FaGavel, FaRobot, FaSearch, FaArrowLeft, FaCalendar, FaTimes } from "react-icons/fa";
 import { FiLoader, FiFileText } from "react-icons/fi";
@@ -6,6 +7,9 @@ import api from "../../api/http";
 import ChatTab from "./components/ChatTab";
 
 export default function JudgmentsDashboard() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
   const [findInputText, setFindInputText] = useState("");
   const [filterYear, setFilterYear] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -58,10 +62,18 @@ export default function JudgmentsDashboard() {
     }
   }, [pagination.page]);
 
-  const fetchJudgmentDetails = async (id) => {
+  useEffect(() => {
+    if (id) {
+      fetchJudgmentDetails(id);
+    } else {
+      setSelectedJudgment(null);
+    }
+  }, [id]);
+
+  const fetchJudgmentDetails = async (judgmentId) => {
     setLoading(true);
     try {
-      const response = await api.get(`/judgments/${id}`);
+      const response = await api.get(`/judgments/${judgmentId}`);
       setSelectedJudgment({
         ...response.data,
         isCustom: false
@@ -133,8 +145,13 @@ export default function JudgmentsDashboard() {
     <DashboardLayout>
       <div className="relative flex-1 flex flex-col font-sans min-h-0">
         
-        {/* STATE 1: SEARCH AND DISCOVERY VIEW */}
-        {!selectedJudgment ? (
+        {/* If an ID exists but no judgment is loaded yet, show loading instead of search */}
+        {id && !selectedJudgment ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-20">
+            <FiLoader className="text-5xl text-indigo-500 animate-spin mb-4" />
+            <p className="text-slate-400">Loading judgment details...</p>
+          </div>
+        ) : !selectedJudgment ? (
           <div className="flex-1 flex flex-col items-center justify-start overflow-y-auto w-full max-w-5xl mx-auto py-10 px-4 scrollbar-hide">
             
             <div className="w-full text-center mb-10">
@@ -246,7 +263,7 @@ export default function JudgmentsDashboard() {
                       {judgments.map((judgment) => (
                         <div
                           key={judgment._id}
-                          onClick={() => fetchJudgmentDetails(judgment._id)}
+                          onClick={() => navigate(`/judgments/${judgment._id}`)}
                           className="bg-neutral-900/60 hover:bg-neutral-800 rounded-xl p-5 ring-1 ring-white/10 hover:ring-indigo-500/50 cursor-pointer transition-all duration-200 group flex flex-col shadow-lg"
                         >
                           <h4 className="text-white text-lg font-bold mb-3 leading-snug group-hover:text-indigo-300 transition-colors line-clamp-3">
@@ -296,7 +313,13 @@ export default function JudgmentsDashboard() {
             {/* Top Bar Navigation */}
             <div className="h-16 shrink-0 bg-neutral-900 ring-1 ring-white/10 px-4 flex items-center justify-between z-10 shadow-md">
                <button 
-                 onClick={() => setSelectedJudgment(null)} 
+                 onClick={() => {
+                   if (window.history.state && window.history.state.idx > 0) {
+                     navigate(-1);
+                   } else {
+                     navigate('/judgments');
+                   }
+                 }} 
                  className="flex items-center gap-2 text-sm font-bold text-slate-300 hover:text-white bg-black/40 hover:bg-white/10 px-4 py-2 rounded-lg transition-colors ring-1 ring-white/5"
                >
                  <FaArrowLeft /> Back to Search Results

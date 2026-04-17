@@ -65,8 +65,15 @@ async def search_judgments(
                     loc_keys = ["sindh", "karachi", "lahore", "peshawar", "balochistan", "islamabad", "supreme", "federal shariat"]
                     
                     should_skip_due_to_location = False
+                    
+                    # If specific court explicitly written in search query, enforce strict court match
+                    if "supreme court" in query_l and "supreme" not in doc_court_l and doc_court_l != "":
+                        should_skip_due_to_location = True
+                    elif "high court" in query_l and "high court" not in doc_court_l and doc_court_l != "":
+                        should_skip_due_to_location = True
+                        
                     for loc in loc_keys:
-                        # If user specifically typed a court location, the document MUST contain that location.
+                        # If user specifically typed a location, the document MUST contain that location in at least the title or content.
                         if loc in query_l:
                             if loc not in title_l and loc not in doc_court_l and loc not in doc_content_l:
                                 should_skip_due_to_location = True
@@ -108,118 +115,6 @@ async def search_judgments(
 
             except Exception as sem_err:
                 logger.error(f"Semantic search failed, falling back to metadata scan: {sem_err}\n{traceback.format_exc()}")
-                # Fall through to metadata scan below
-
-        # ── EXACT KEYWORD MATCH (Metadata & Full-text Scan) ────
-        # Run alongside Semantic Search to guarantee Lawyer Names, Judges, Case Numbers appear!
-        import sqlite3, json as _json
-        db_path = vector_store.index_path / "metadata.db"
-        if db_path.exists():
-            conn = sqlite3.connect(str(db_path), check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            try:
-                # Build WHERE clause
-                # Enforce strictly Easy Law documents as requested by user
-                conditions = ["(excerpt LIKE '%Journal %' OR excerpt LIKE '%\nAppeal No.%' OR source_file LIKE 'administrator%')"]
-                conditions.append("(category != 'Statute' AND title NOT LIKE '%Ordinance%' AND title NOT LIKE '%Act, %')")
-                params = []
-                if query:
-                    # Expanded FAST fallback query focusing on keywords, lawyers, judges, titles
-                    conditions.insert(0,
-                        "(title LIKE ? OR court LIKE ? OR judge LIKE ? OR excerpt LIKE ? OR case_number LIKE ?)"
-                    )
-                    q_like = f"%{query}%"
-                    params += [q_like, q_like, q_like, q_like, q_like]
-                if caseType:
-                    conditions.append("(case_type LIKE ? OR category LIKE ?)")
-                    ct_like = f"%{caseType}%"
-                    params += [ct_like, ct_like]
-                if court:
-                    conditions.append("court LIKE ?")
-                    params.append(f"%{court}%")
-
-                where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
-
-                # Get distinct documents (group by mock_id to handle repaired titles)
-                sql = f"""
-                    SELECT mock_id, title, source_file, court, judge, date,
-                           case_number, case_type, category, excerpt,
-                           MIN(row_id) as row_id
-                    FROM chunks
-                    {where}
-                    GROUP BY mock_id
-                    ORDER BY row_id
-                    LIMIT {limit * 10}
-                """
-                rows = conn.execute(sql, params).fetchall()
-                
-                exact_matches = []
-                for row in rows:
-                    title    = row["title"] or "Untitled"
-                    source   = row["source_file"] or ""
-                    case_num = row["case_number"] or ""
-                    # Use pre-calculated mock_id from SQLite repair
-                    mock_id  = row["mock_id"]
-                    
-                    if mock_id in seen_keys:
-                        continue
-                    seen_keys.add(mock_id)
-                    
-                    from utils.formatters import extract_full_metadata
-                    full_meta = extract_full_metadata(row["excerpt"])
-                    
-                    exact_matches.append({
-                        "_id":            mock_id,
-                        "title": format_judgment_title(case_num, row["court"], title, row["excerpt"], source),
-                        "caseNumber": case_num or "N/A",
-                        "caseType":       str(row["case_type"] or row["category"] or ("Statute" if "Act" in title or "Ordinance" in title else "Judgment")),
-                        "court":          str(extract_court(row["court"], row["excerpt"]) or "Supreme Court of Pakistan"),
-                        "dateOfJudgment": str(row["date"] or ""),
-                        "judge":          full_meta["judge"] or row["judge"] or "",
-                        "summary":        (row["excerpt"] or "")[:300] + "...",
-                        "score":          1.0,
-                        "journal":        full_meta["journal"],
-                        "parties":        full_meta["parties"],
-                        "lawyers":        full_meta["lawyers"],
-                        "statutes":       full_meta["statutes"]
-                    })
-                
-                # Prepend exact SQL text matches to Semantic search for true hybrid functionality
-                all_judgments = exact_matches + all_judgments
-
-            except Exception as e:
-                logger.error(f"Metadata scan failed: {e}")
-            finally:
-                conn.close()
-        else:
-            # Last resort: capped metadata property (50k limit)
-            for chunk in vector_store.metadata:
-                exc = str(chunk.get("excerpt") or chunk.get("content") or "")
-                src = str(chunk.get("source_file") or chunk.get("sourceFile") or "")
-                if "Journal " not in exc and "\nAppeal No." not in exc and not src.startswith("administrator"):
-                    continue
-                
-                mock_id   = chunk.get("mock_id")
-                title     = chunk.get("title") or "Untitled"
-                if not any(j["_id"] == mock_id for j in all_judgments):
-                    from utils.formatters import extract_full_metadata
-                    full_meta = extract_full_metadata(chunk.get("excerpt") or chunk.get("content", ""))
-                    all_judgments.append({
-                        "_id":            mock_id,
-                        "title":          format_judgment_title(chunk.get("case_number"), chunk.get("court"), title, chunk.get("excerpt"), chunk.get("source_file", "")),
-                        "caseNumber":     chunk.get("case_number") or "N/A",
-                        "caseType":       str(chunk.get("case_type") or chunk.get("category") or ("Statute" if "Act" in title or "Ordinance" in title else "Judgment")),
-                        "court":          str(extract_court(chunk.get("court"), chunk.get("excerpt")) or "Supreme Court of Pakistan"),
-                        "dateOfJudgment": str(chunk.get("date") or ""),
-                        "judge":          full_meta["judge"] or chunk.get("judge") or "",
-                        "summary":        (chunk.get("excerpt") or chunk.get("content", "")[:300]) + "...",
-                        "score":          0.0,
-                        "journal":        full_meta["journal"],
-                        "parties":        full_meta["parties"],
-                        "lawyers":        full_meta["lawyers"],
-                        "statutes":       full_meta["statutes"]
-                    })
-
 
         # ── Clean Year & Optional field filters ─────────────────────────────
         import re

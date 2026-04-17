@@ -1,6 +1,6 @@
 import DashboardLayout from "../../layout/DashboardLayout";
-import { useState } from "react";
 import { FaComments, FaSearch, FaBrain, FaCommentDots, FaClipboardList } from "react-icons/fa";
+import { useSearchParams } from "react-router-dom";
 import ChatTab from "./components/ChatTab";
 import CaseLegalSearch from "./components/CaseLegalSearch";
 import OutcomePrediction from "./components/OutcomePrediction";
@@ -8,7 +8,8 @@ import Feedback from "./components/Feedback";
 import ClientGuidance from "./components/ClientGuidance";
 
 export default function ChatDashboard() {
-  const [activeTab, setActiveTab] = useState("chat");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") || "chat";
 
   const tabs = [
     { id: "chat", label: "Chat", icon: FaComments },
@@ -35,7 +36,7 @@ export default function ChatDashboard() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => setSearchParams({ tab: tab.id })}
                   className={`px-4 py-3 flex items-center gap-2 font-medium text-sm transition-all border-b-2 whitespace-nowrap ${
                     isActive
                       ? "text-white border-indigo-500 bg-indigo-500/10 shadow-sm"

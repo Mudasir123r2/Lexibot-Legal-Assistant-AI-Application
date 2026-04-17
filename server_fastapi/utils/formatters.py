@@ -1,5 +1,58 @@
 import re
 
+def _auto_heal_ocr_spaces(text: str) -> str:
+    """Globally heals arbitrary OCR fractures (e.g. NA WAB, ST ATE) caused by diagonal letter tracking."""
+    import re
+
+    def repl(m):
+        w1, w2 = m.group(1), m.group(2)
+        # If both fragments are suspiciously long, it's probably two valid words
+        if len(w1) > 3 and len(w2) > 3:
+            return m.group(0)
+        
+        w1_u, w2_u = w1.upper(), w2.upper()
+        # Prevent merging known valid short English words
+        if w1_u in ('AT','THAT','AND','TO','IN','IT','IS','THE','A','OF','ON','AS','AN','NO','OR','SO','BY','MY','UP','VS','V') or \
+           w2_u in ('A','ALL','ARE','AND','THE','OF','AT','IT','AS','AN','AM','NO','ON','IN','IF','IS','SO','OR','UP','US','VS','V'):
+            return m.group(0)
+            
+        return w1 + w2
+
+    # 1. Word ending in diagonal/overhang letter + Word starting with vowel
+    text = re.sub(r'\b([A-Za-z]{1,7}[WTVPYFKwtvpyfk])\s+([AaEeIiOoUu][A-Za-z]{1,7})\b', repl, text)
+    
+    # 2. Word ending in vowel + Word starting with diagonal/overhang letter
+    text = re.sub(r'\b([A-Za-z]{1,7}[AaEeIiOoUu])\s+([WTVPYFKwtvpyfk][A-Za-z]{1,7})\b', repl, text)
+    
+    # 3. Single isolated initial letters merging into a vowel word (W AHEED, P ARVEEN)
+    text = re.sub(r'\b([WTVPYFKwtvpyfk])\s+([AaEeIiOoUu][A-Za-z]{2,7})\b', repl, text)
+    
+    # 4. Stray single consonant at end of word (FAMIL Y -> FAMILY)
+    text = re.sub(r'\b([A-Za-z]{3,})\s+([B-DF-HJ-NP-TV-Z])\b', repl, text)
+    
+    # 5. Stray single consonant at start of word (T ARIQ -> TARIQ) 
+    text = re.sub(r'\b([B-DF-HJ-NP-TV-Z])\s+([A-Za-z]{3,})\b', repl, text)
+
+    # 6. Manual target for S TATE (S and T don't fit above vowel rules perfectly)
+    text = re.sub(r'\b([Ss])\s+(TATE|tate)\b', r'\1\2', text)
+    
+    # 7. Aggressive domain-specific overrides - ignoring weird boundaries and numbers
+    text = re.sub(r'(?i)moht\s*arma', 'MOHTARMA', text)
+    text = re.sub(r'(?i)df?edera\s*tion', 'FEDERATION', text)
+    text = re.sub(r'(?i)pakist\s*an', 'PAKISTAN', text)
+    text = re.sub(r'(?i)secret\s*ary', 'SECRETARY', text)
+    text = re.sub(r'(?i)bhutt\s*o', 'BHUTTO', text)
+    text = re.sub(r'(?i)res\s*pondent', 'RESPONDENT', text)
+    text = re.sub(r'(?i)dep\s*artment', 'DEPARTMENT', text)
+    text = re.sub(r'(?i)sharia\s*t', 'SHARIAT', text)
+    text = re.sub(r'(?i)f\s*asih', 'FASIH', text)
+    
+    # Finally, fix VEDANT and COMMISSIONER manual bugs as seen globally
+    text = text.replace('VDANT', 'VEDANT')
+    text = text.replace('OMMISSIONER', 'COMMISSIONER')
+    
+    return text
+
 COURT_CANONICAL = {
     r'supreme\s+court': 'Supreme Court of Pakistan',
     r'federal\s+shariat': 'Federal Shariat Court',
@@ -16,12 +69,21 @@ COURT_CANONICAL = {
 
 def canonical_court(text: str) -> str:
     """Return the canonical court name from any text mentioning a court."""
+    import re
+    # Fix extreme OCR spacing
+    text = re.sub(r'(?<![a-zA-Z])(?:[a-zA-Z]\s+){3,}[a-zA-Z](?![a-zA-Z])', lambda m: m.group(0).replace(' ', ''), text)
+    
     t = text.strip()
     for pat, name in COURT_CANONICAL.items():
         if re.search(pat, t, re.IGNORECASE):
             return name
     # Remove leading "THE " and title-case
     t = re.sub(r'(?i)^the\s+', '', t).strip()
+    
+    t = t.replace('Appella Te', 'Appellate')
+    t = t.replace('P Akist An', 'Pakistan')
+    t = t.replace('Tribunal Appella Te', 'Tribunal Appellate')
+    
     return re.sub(r'\s+', ' ', t).title() if t else ""
 
 def extract_court(db_court: str, header_text: str) -> str:
@@ -79,7 +141,7 @@ def extract_full_metadata(header_text: str) -> dict:
     if parties_match: meta["parties"] = parties_match.group(1).strip()
     
     lawyers_match = re.search(r'Lawyers[\:\s]+(.*?)(?=\s+(?:Statut?es\b|$|\n))', header_text, re.IGNORECASE)
-    if lawyers_match: meta["lawyers"] = lawyers_match.group(1).strip()
+    if lawyers_match: meta["lawyers"] = _auto_heal_ocr_spaces(lawyers_match.group(1).strip())
     
     statues_match = re.search(r'Statut?es[\:\s]+(.*?)(?=\s+(?:Judgment\b|$|\n))', header_text, re.IGNORECASE)
     if statues_match: meta["statutes"] = statues_match.group(1).strip()
@@ -127,21 +189,11 @@ def format_judgment_title(citation: str, court: str, original_title: str = "", e
         """Strip noise words and role labels from a party name."""
         import re
         
-        # Repair common OCR spacing artifacts
-        name = name.replace('FEDERA TION', 'FEDERATION')
-        name = name.replace('P AKIST AN', 'PAKISTAN')
-        name = name.replace('Pakist An', 'Pakistan')
-        name = name.replace('ST ATE', 'STATE')
-        name = name.replace('MUKHT AR', 'MUKHTAR')
-        name = name.replace('MUMT AZ', 'MUMTAZ')
-        name = name.replace('MUNA WAR', 'MUNAWAR')
-        name = name.replace('P ARVEEN', 'PARVEEN')
-        name = name.replace('T ARIQ', 'TARIQ')
-        name = name.replace('T AZEEM', 'TAZEEM')
-        name = name.replace('ANW AR', 'ANWAR')
-        name = name.replace('VDANT', 'VEDANT')
-        name = name.replace('OMMISSIONER', 'COMMISSIONER')
-        name = name.replace('P AK', 'PAK')
+        # Repair extreme OCR spacing (S U P R E M E -> SUPREME)
+        name = re.sub(r'(?<![a-zA-Z])(?:[a-zA-Z]\s+){3,}[a-zA-Z](?![a-zA-Z])', lambda m: m.group(0).replace(' ', ''), name)
+        
+        # Smart Heuristic to fix broken OCR words (NA WAB, ANW AR, ST ATE) globally
+        name = _auto_heal_ocr_spaces(name)
         
         # Remove any leading garbage prefixes (like "arties:" or ". ")
         name = re.sub(r'^(?:[Pp]arty|[Pp]arties|[Aa]rties|PARTIES)[\s:]*', '', name).strip()
@@ -149,6 +201,11 @@ def format_judgment_title(citation: str, court: str, original_title: str = "", e
         
         # Remove anything before and including a stray closing parenthesis if it exists at the start
         name = re.sub(r'^[^()]*\)\s*', '', name)
+        
+        # Remove colon/dot labeled roles: "RESPONDENT :DEP ARTMENT", "ASSESSEE.APPELLANT :"
+        name = re.sub(r'(?i)\b(?:RESPONDENTS?|APPELLANTS?|PETITIONERS?|PLAINTIFFS?|DEFENDANTS?|ASSESSEES?)[\s\:\.]+', '', name)
+        name = re.sub(r'(?i)[\s\:\.]+(?:RESPONDENTS?|APPELLANTS?|PETITIONERS?|PLAINTIFFS?|DEFENDANTS?|ASSESSEES?)\b', '', name)
+        
         # Remove parenthetical role labels and OCR junk like (In CA 2148) or (In Both Cases)
         name = re.sub(r'\s*\((?:Appellant|Petitioner|Plaintiff|Respondent|Defendant|APPELLANT|PETITIONER|PLAINTIFF|RESPONDENT|DEFENDANT|Applicant|APPLICANT)s?\)', '', name, flags=re.IGNORECASE)
         name = re.sub(r'\s*\([iI]n\s+(?:Both\s+)?(?:C[A-Z0-9\.\s]+|\bCases?|\bC\.\s*A\.\s*).*?\)', '', name, flags=re.IGNORECASE)
@@ -158,6 +215,17 @@ def format_judgment_title(citation: str, court: str, original_title: str = "", e
         name = re.sub(r'\b(?:alias|aka)\b.*', '', name, flags=re.IGNORECASE)
         # Strip '& [x] others' or 'and [x] others'
         name = re.sub(r'\b(?:and|&)\s+\d+\s+others?\b', '', name, flags=re.IGNORECASE)
+        
+        # Replace 1 -> I in capital words (like D1N, ANSAR1, AS1H)
+        name = re.sub(r'([A-Za-z])1([A-Za-z])', r'\1I\2', name)
+        name = re.sub(r'([A-Za-z])1\b', r'\1I', name)
+        name = re.sub(r'\b1([A-Za-z])', r'I\1', name)
+        name = name.replace('DEP ARTMENT', 'DEPARTMENT')
+        name = name.replace('F ASIH', 'FASIH')
+        
+        # Remove directly attached roles at the end of names like ANWARPETITIONER -> ANWAR
+        name = re.sub(r'(?i)(.*?)(PETITIONER|RESPONDENT|APPELLANT|PLAINTIFF|DEFENDANT|APPLICANT)S?', r'\1', name)
+        
         noise = r'\b(the|and|through|LRs?|deceased|decd|mr|mrs|mst|etc|others?|another|alias|parties|party|\d+)\b'
         name  = re.sub(noise, '', name, flags=re.IGNORECASE)
         name  = re.sub(r'\s+', ' ', name).strip().strip('(),. ')
@@ -165,20 +233,24 @@ def format_judgment_title(citation: str, court: str, original_title: str = "", e
 
     def _finalize_title(t: str) -> str:
         """Final sweep to catch broken strings like 'v. ERSUS' before rendering."""
+        t = re.sub(r'^(?i).*?(?:bench|nch|\bcourt)\s*,\s*(?:[a-zA-Z\s\.]+\s+)?in\s+', '', t).strip()
+        t = re.sub(r'^(?i).*?(?:bench|nch)\s*,\s*', '', t).strip()
+        
+        t = _auto_heal_ocr_spaces(t)
+        
+        # Hard fallback regex replacements ignoring word boundaries to catch attached garbage like "BHUTT O2" or "DFEDERA TION"
+        t = re.sub(r'(?i)moht\s*arma', 'MOHTARMA', t)
+        t = re.sub(r'(?i)df?edera\s*tion', 'FEDERATION', t)
+        t = re.sub(r'(?i)secret\s*ary', 'SECRETARY', t)
+        t = re.sub(r'(?i)pakist\s*an', 'PAKISTAN', t)
+        t = re.sub(r'(?i)bhutt\s*o', 'BHUTTO', t)
+        t = re.sub(r'(?i)res\s*pondent', 'RESPONDENT', t)
+        t = re.sub(r'(?i)dep\s*artment', 'DEPARTMENT', t)
+        t = re.sub(r'(?i)sharia\s*t', 'SHARIAT', t)
+        t = re.sub(r'(?i)f\s*asih', 'FASIH', t)
+        
         t = re.sub(r'v\.\s*[Ee][rR][sS][uU][sS]', 'v.', t)
         t = re.sub(r'\bVERSUS\b', 'v.', t, flags=re.IGNORECASE)
-        t = t.replace('FEDERA TION', 'FEDERATION')
-        t = t.replace('P AKIST AN', 'PAKISTAN')
-        t = t.replace('Pakist An', 'Pakistan')
-        t = t.replace('ST ATE', 'STATE')
-        t = t.replace('MUKHT AR', 'MUKHTAR')
-        t = t.replace('MUMT AZ', 'MUMTAZ')
-        t = t.replace('MUNA WAR', 'MUNAWAR')
-        t = t.replace('P ARVEEN', 'PARVEEN')
-        t = t.replace('T ARIQ', 'TARIQ')
-        t = t.replace('T AZEEM', 'TAZEEM')
-        t = t.replace('ANW AR', 'ANWAR')
-        t = t.replace('MUNAWARPETITIONER', 'MUNAWAR')
         t = t.replace('KAUSARPARVEEN . STATE', 'KAUSAR PARVEEN')
         t = t.replace('KAUSARPARVEEN', 'KAUSAR PARVEEN')
         t = t.replace('VDANT', 'VEDANT')

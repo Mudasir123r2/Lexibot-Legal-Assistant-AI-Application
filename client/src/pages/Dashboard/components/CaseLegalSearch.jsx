@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { FaSearch, FaGavel, FaCalendar, FaFileAlt, FaFilter, FaTimes, FaStar, FaBalanceScale } from "react-icons/fa";
 import { FiLoader } from "react-icons/fi";
 import api from "../../../api/http";
 
 export default function CaseLegalSearch() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchMode, setSearchMode] = useState("hybrid"); // semantic, keyword, hybrid
   const [caseType, setCaseType] = useState("");
@@ -65,7 +67,6 @@ export default function CaseLegalSearch() {
   const getSearchModeLabel = (mode) => {
     switch(mode) {
       case "semantic": return "AI Semantic";
-      case "keyword": return "Keyword";
       case "hybrid": return "Smart Search";
       default: return mode;
     }
@@ -76,6 +77,20 @@ export default function CaseLegalSearch() {
     if (score >= 75) return { color: "blue", label: "Relevant" };
     if (score >= 60) return { color: "amber", label: "Moderate" };
     return { color: "slate", label: "Low" };
+  };
+
+  const getFormattedDate = (j) => {
+    let d = j.date && j.date !== "Unknown" && j.date !== "None" ? String(j.date).trim() : null;
+    if (!d && j.year) d = String(j.year).trim();
+    if (!d || d === "Unknown") return "Date N/A";
+    
+    // Check if it's just a raw number/year
+    if (/^(19|20)\d{2}$/.test(d)) return d;
+    
+    const parsed = new Date(d);
+    if (!isNaN(parsed.getTime())) return parsed.toLocaleDateString();
+    
+    return d;
   };
 
   return (
@@ -103,7 +118,7 @@ export default function CaseLegalSearch() {
           {/* Search Mode Selection */}
           <div>
             <label className="block text-sm font-medium text-slate-300 mb-2">Search Mode</label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => setSearchMode("hybrid")}
                 className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
@@ -116,7 +131,7 @@ export default function CaseLegalSearch() {
                   <FaStar className="text-xs" />
                   Smart
                 </div>
-                <div className="text-xs text-slate-400 mt-1">AI + Keywords</div>
+                <div className="text-xs text-slate-400 mt-1">AI Search</div>
               </button>
               <button
                 onClick={() => setSearchMode("semantic")}
@@ -128,17 +143,6 @@ export default function CaseLegalSearch() {
               >
                 <div>AI Semantic</div>
                 <div className="text-xs text-slate-400 mt-1">Meaning-based</div>
-              </button>
-              <button
-                onClick={() => setSearchMode("keyword")}
-                className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                  searchMode === "keyword"
-                    ? "bg-indigo-600/30 border-indigo-500/50 text-white"
-                    : "bg-neutral-800/50 border-white/10 text-slate-300 hover:bg-neutral-800/70"
-                }`}
-              >
-                <div>Keyword</div>
-                <div className="text-xs text-slate-400 mt-1">Exact match</div>
               </button>
             </div>
           </div>
@@ -264,7 +268,7 @@ export default function CaseLegalSearch() {
                 <div
                   key={judgment.id || idx}
                   className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-5 hover:ring-indigo-500/30 hover:shadow-xl cursor-pointer transition-all animate-fade-in"
-                  onClick={() => fetchJudgmentDetails(judgment.id)}
+                  onClick={() => navigate(`/judgments/${judgment.id}`)}
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1">
@@ -295,7 +299,7 @@ export default function CaseLegalSearch() {
                     </div>
                     <div className="flex items-center gap-2">
                       <FaCalendar className="text-slate-500" />
-                      <span>{judgment.date ? new Date(judgment.date).toLocaleDateString() : "Date N/A"}</span>
+                      <span>{getFormattedDate(judgment)}</span>
                     </div>
                     {judgment.search_method && (
                       <div className="flex items-center gap-2">

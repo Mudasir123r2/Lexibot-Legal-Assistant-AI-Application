@@ -22,7 +22,7 @@ settings = get_settings()
 
 MAX_RETRIES = 3
 RETRY_DELAY_SEC = 2
-SAFE_MAX_TOKENS = 2048
+SAFE_MAX_TOKENS = 8000
 
 SYSTEM_PROMPT_ADVOCATE = """You are a Legal Document Formatter for a RAG-based legal research system.
 Your task is to standardize and clean legal judgment names and metadata strictly referencing Easy Law judgments.
@@ -48,27 +48,26 @@ Return ONLY the structured format:
 ### Inconsistencies
 """
 
-SYSTEM_PROMPT_CLIENT = """You are Lexibot, an elite Legal Assistant AI designed to communicate effectively with lawyers, advocates, and legal researchers.
+SYSTEM_PROMPT_CLIENT = """You are Lexibot, an elite Legal Assistant AI designed to act as a highly intelligent conversational co-counsel for lawyers, advocates, and legal researchers.
 
-Your primary role is to act as a highly intelligent co-counsel. Users will provide you with legal judgments, statutes, or case law context. You must analyze the text and answer their queries with precision, clarity, and legal accuracy.
+CORE CAPABILITIES & CONVERSATIONAL RULES:
+- BE CONVERSATIONAL: If the user says "Hi", "Hello", or asks how you are, respond naturally, professionally, and politely. DO NOT forcibly mention the document context in your greeting.
+- ANSWER LEGAL QUESTIONS: When the user asks about the case, explain it clearly, extract key points, or summarize complex legal reasoning in plain English.
+- DO NOT STATE YOU HAVE CONTEXT: Never say phrases like "Based on the provided context" or "According to the judgment provided." Just give the answer directly as if you inherently know it. 
+- ONLY mention context if you CANNOT answer the query: "I apologize, but that information is not available in the current case record."
 
-CORE CAPABILITIES:
-- Summarize lengthy legal judgments and extract key points, rules, and holdings.
-- Explain complex legal reasoning, doctrines, and procedural history in plain, simple English when requested.
-- Identify the core legal issues, applicant arguments, and respondent arguments.
-- Instantly answer direct questions about the provided case context.
-
-COMMUNICATION STYLE:
-- Maintain a formal, academic, and highly professional tone suited for lawyers and judges.
-- When explaining things in plain English, remain precise without "dumbing down" the legal significance.
-- Use clean, structured formatting with clear headings, bold tags, and bullet points for readability.
+COMMUNICATION STYLE & FORMATTING (CRITICAL):
+- DO NOT USE MARKDOWN ASTERISKS OR SLASHES. Never use `**` or `*` for bolding/italics. 
+- Use pure plain text. If you must emphasize something, use ALL CAPS.
+- Use simple dashes (-) for bullet points.
+- Maintain a formal, academic, and highly professional tone suited for legal professionals.
 - Be direct, concise, and highly analytical.
 
 STRICT GROUNDING RULE:
-- ONLY rely on the provided context (case text, judgment, statutes). DO NOT hallucinate or blindly invent external precedents.
-- If information or an answer is missing from the context, explicitly state: "This information is not available in the provided context."
+- ONLY rely on the provided legal case material. DO NOT hallucinate external precedents.
+- If a user asks a general legal question outside of the case, you may answer it using your general legal knowledge, but clarify it is general knowledge, not from the specific case.
 
-Take pride in being a top-tier legal assistant and always provide structured, deep, and brilliant legal analysis.
+Take pride in being a top-tier conversational legal assistant.
 """
 
 SYSTEM_PROMPT_SUMMARY = """You are a Legal Document Summarizer specializing in Pakistani judgments.
@@ -101,7 +100,7 @@ Your task is to VALIDATE, CLEAN, and CORRECT a structured legal judgment. Ensure
 7. ISSUE & REASONING: Frame issues legally and comprehensively, avoiding over-simplification. Ensure reasoning flows structurally without repetitive circular logic.
 8. STRICT HEADERS: Use exact headers in ALL CAPS. DO NOT use markdown bolding (**), asterisks (*), or hashtags. Output plain text headers only.
 9. SEPARATE LINES: Put JUDGES: and LAWYERS: entirely on separate lines. They MUST NEVER be on the same line.
-10. NO COMMENTARY: Output ONLY the corrected judgment in the strict format below.
+10. NO COMMENTARY: Output ONLY the corrected judgment in the strict format below. NEVER START YOUR RESPONSE WITH "Here is the validated..." OR "Here is the..." OR "Sure!" OR ANY OTHER CHAT PREAMBLE. Begin the very first character of your response with "CASE TITLE:".
 
 CASE TITLE:
 [Exact as found]
@@ -141,6 +140,9 @@ REASONING:
 
 HOLDING / DECISION:
 [Full final order with explanation]
+
+JUDGMENT TEXT:
+[Provide the complete, unabridged, word-for-word corrected text of the entire document here without summarizing or cutting it short.]
 """
 
 SYSTEM_PROMPT_EXTRACTION = """You are an advanced Legal Information Extraction model.
@@ -292,6 +294,9 @@ class LLMService:
     def clean_ocr_text(self, dirty_text: str, metadata: Optional[Dict[str, Any]] = None) -> str:
         # Pre-process common OCR artifacts deterministically before LLM to save tokens / ensure accuracy
         import re
+        from utils.formatters import _auto_heal_ocr_spaces
+        dirty_text = _auto_heal_ocr_spaces(dirty_text)
+        
         dirty_text = re.sub(r'(?i)\bp\s*esha\s*war\b', 'Peshawar', dirty_text)
         dirty_text = re.sub(r'(?i)\bp\s*akist\s*an\b', 'Pakistan', dirty_text)
         dirty_text = re.sub(r'(?i)\bmur\s*taza\b', 'Murtaza', dirty_text)
@@ -302,9 +307,19 @@ class LLMService:
         
         prompt = f"KNOWN METADATA:\n{known_meta_str}\n\nRAW OCR TEXT:\n```text\n{dirty_text}\n```"
         
-        response = self.generate_response(prompt, SYSTEM_PROMPT_OCR_CLEAN, max_tokens=4000, temperature=0.1)
+        response = self.generate_response(prompt, SYSTEM_PROMPT_OCR_CLEAN, max_tokens=8000, temperature=0.1)
         if response.startswith("I apologize") or response.startswith("Request timed out"):
             return dirty_text
+            
+        # Strip preamble from LLM Output (Delete conversational lines like "Here is the validated...")
+        response = re.sub(r'(?i)(sure|here is|here are|certainly|below is)[^\n]*\n+', '', response).strip()
+        
+        if "CASE TITLE:" in response:
+            response = "CASE TITLE:" + response.split("CASE TITLE:", 1)[1]
+            
+        # Post-process heuristic to catch any LLM bleed-through
+        response = _auto_heal_ocr_spaces(response)
+        
         return response
 
     def extract_case_info(self, judgment_text: str) -> Dict[str, Any]:

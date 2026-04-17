@@ -32,12 +32,12 @@ class JudgmentSearchRequest(BaseModel):
     caseType: Optional[str] = None
     yearFrom: Optional[int] = None
     yearTo: Optional[int] = None
-    searchMode: str = "hybrid"  # semantic, keyword, or hybrid
+    searchMode: str = "hybrid"  # semantic only
     court: Optional[str] = None
     caseType: Optional[str] = None
     yearFrom: Optional[int] = None
     yearTo: Optional[int] = None
-    searchMode: str = "hybrid"  # semantic, keyword, or hybrid
+    searchMode: str = "hybrid"  # semantic only
 
 
 class JudgmentSearchResponse(BaseModel):
@@ -248,7 +248,7 @@ async def search_judgments(
     
     Features:
     - Semantic search using RAG pipeline (understands meaning)
-    - Keyword-based MongoDB search (exact matching)
+    
     - Hybrid mode (combines both for best results)
     - Advanced filters: court, case type, date range
     - Relevance scoring and ranking
@@ -273,7 +273,43 @@ async def search_judgments(
             
             # Apply additional filters
             for result in semantic_results:
+                title = str(result.get("title") or "")
+                cat = str(result.get("category") or result.get("case_type") or result.get("caseType") or "")
+                src = str(result.get("source_file") or "")
+                title_l = title.lower()
+                
+                # Hard filter to remove Acts and Ordinances
+                if (
+                    cat.lower() in ("statute", "law", "act") 
+                    or "laws/" in src.lower() 
+                    or ("ordinance" in title_l)
+                    or (("act," in title_l or "act 19" in title_l or "act 20" in title_l) and " vs " not in title_l and " v " not in title_l and " v. " not in title_l)
+                ):
+                    continue
+
                 if request.court and request.court.lower() not in result.get("court", "").lower():
+                    continue
+
+                # Strict Court/Location Enforcer (Fixes Semantic Bleed across High Courts)
+                query_l = (request.query or "").lower()
+                doc_court_l = str(result.get("court") or "").lower()
+                doc_content_l = str(result.get("excerpt") or result.get("content") or "").lower()
+                loc_keys = ["sindh", "karachi", "lahore", "peshawar", "balochistan", "islamabad", "supreme", "federal shariat"]
+                
+                should_skip_due_to_location = False
+                
+                if "supreme court" in query_l and "supreme" not in doc_court_l and doc_court_l != "":
+                    should_skip_due_to_location = True
+                elif "high court" in query_l and "high court" not in doc_court_l and doc_court_l != "":
+                    should_skip_due_to_location = True
+                    
+                for loc in loc_keys:
+                    if loc in query_l:
+                        if loc not in title_l and loc not in doc_court_l and loc not in doc_content_l:
+                            should_skip_due_to_location = True
+                            break
+                            
+                if should_skip_due_to_location:
                     continue
                 
                 # Year filtering
@@ -291,95 +327,32 @@ async def search_judgments(
                 if request.yearTo and year and year > request.yearTo:
                     continue
                 
+                # Format fixes
+                import re
+                title_c = re.sub(r'(?<![a-zA-Z])(?:[a-zA-Z]\s+){3,}[a-zA-Z](?![a-zA-Z])', lambda m: m.group(0).replace(' ', ''), result.get("title", ""))
+                title_c = re.sub(r'^(?i).*?(?:bench|nch|\bcourt)\s*,\s*(?:[a-zA-Z\s\.]+\s+)?in\s+', '', title_c).strip()
+                title_c = re.sub(r'^(?i).*?(?:bench|nch)\s*,\s*', '', title_c).strip()
+                result["title"] = title_c
+
+                excerpt_c = re.sub(r'(?<![a-zA-Z])(?:[a-zA-Z]\s+){3,}[a-zA-Z](?![a-zA-Z])', lambda m: m.group(0).replace(' ', ''), result.get("excerpt", ""))
+                result["excerpt"] = excerpt_c
+                
+                # Double check year
+                if not year:
+                    year_match = re.search(r'\b(19\d{2}|20\d{2})\b', title_c)
+                    if year_match:
+                        year = int(year_match.group(1))
+                
+                result["year"] = year
+
+                date_val = str(result.get("date") or result.get("dateOfJudgment") or "")
+                if date_val == "None" or date_val.strip() == "":
+                    date_val = str(year or "Unknown")
+                result["date"] = date_val
+                
                 result["search_method"] = "semantic"
                 result["relevance_score"] = round(result.get("similarity", 0.5) * 100, 1)
                 results.append(result)
-        
-        # 2. Keyword search using MongoDB (exact matching)
-        if request.searchMode in ["keyword", "hybrid"]:
-            mongo_filter = {}
-            
-            # Text search
-            if request.query:
-                mongo_filter["$or"] = [
-                    {"title": {"$regex": request.query, "$options": "i"}},
-                    {"caseNumber": {"$regex": request.query, "$options": "i"}},
-                    {"keywords": {"$regex": request.query, "$options": "i"}},
-                    {"parties": {"$regex": request.query, "$options": "i"}},
-                    {"citation": {"$regex": request.query, "$options": "i"}}
-                ]
-            
-            # Apply filters
-            if request.caseType:
-                mongo_filter["caseType"] = request.caseType
-            if request.court:
-                mongo_filter["court"] = {"$regex": request.court, "$options": "i"}
-            
-            # Year range filtering
-            if request.yearFrom or request.yearTo:
-                mongo_filter["year"] = {}
-                if request.yearFrom:
-                    mongo_filter["year"]["$gte"] = request.yearFrom
-                if request.yearTo:
-                    mongo_filter["year"]["$lte"] = request.yearTo
-            
-            # Execute MongoDB search
-            keyword_cursor = db.judgments.find(
-                mongo_filter,
-                {"fullText": 0}
-            ).sort("dateOfJudgment", -1).limit(request.limit)
-            
-            keyword_docs = await keyword_cursor.to_list(length=request.limit)
-            
-            # Format keyword results
-            for doc in keyword_docs:
-                formatted = {
-                    "id": str(doc.get("_id")),
-                    "title": doc.get("title", "Untitled"),
-                    "case_type": doc.get("caseType", "Unknown"),
-                    "court": doc.get("court", "Unknown"),
-                    "date": str(doc.get("dateOfJudgment", "Unknown")),
-                    "year": doc.get("year"),
-                    "parties": doc.get("parties", ""),
-                    "citation": doc.get("caseNumber", ""),
-                    "excerpt": (doc.get("summary", "") or "")[:300] + "...",
-                    "search_method": "keyword",
-                    "relevance_score": 75.0
-                }
-                
-                # Boost score based on match location
-                query_lower = request.query.lower() if request.query else ""
-                title_lower = formatted["title"].lower()
-                parties_lower = formatted.get("parties", "").lower()
-                
-                if query_lower in title_lower:
-                    formatted["relevance_score"] = 95.0
-                elif query_lower in parties_lower:
-                    formatted["relevance_score"] = 90.0
-                elif query_lower in formatted.get("citation", "").lower():
-                    formatted["relevance_score"] = 92.0
-                
-                results.append(formatted)
-        
-        # 3. Merge and deduplicate in hybrid mode
-        if request.searchMode == "hybrid":
-            seen_ids = {}
-            merged = []
-            
-            for result in results:
-                result_id = result.get("id") or result.get("_id")
-                if result_id in seen_ids:
-                    # Boost score if found by both methods
-                    existing = seen_ids[result_id]
-                    existing["relevance_score"] = (
-                        existing["relevance_score"] + result["relevance_score"]
-                    ) / 2 + 10  # Average + bonus
-                    existing["search_method"] = "hybrid"
-                else:
-                    seen_ids[result_id] = result
-                    merged.append(result)
-            
-            results = merged
         
         # 4. Sort by relevance
         results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)

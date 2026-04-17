@@ -79,6 +79,14 @@ export default function App() {
             }
           />
           <Route
+            path="/judgments/:id"
+            element={
+              <PrivateRoute>
+                <JudgmentsDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/reminders"
             element={
               <PrivateRoute>
