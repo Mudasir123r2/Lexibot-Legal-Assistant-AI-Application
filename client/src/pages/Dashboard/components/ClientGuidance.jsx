@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { FiClipboard, FiLoader, FiList, FiClock, FiAlertCircle } from "react-icons/fi";
-import { FaBookOpen } from "react-icons/fa";
+import { FiClipboard, FiLoader } from "react-icons/fi";
+import { FaBookOpen, FaLightbulb } from "react-icons/fa";
 import api from "../../../api/http";
 
 export default function ClientGuidance() {
@@ -35,160 +35,151 @@ export default function ClientGuidance() {
     }
   };
 
+  const handleReset = () => {
+    setCaseType("");
+    setSituationDescription("");
+    setResult(null);
+    setError(null);
+  };
+
   return (
-    <div className="h-full flex flex-col md:flex-row gap-6 p-4 sm:p-6 overflow-hidden">
-      {/* Input Form Column */}
-      <div className="w-full md:w-1/3 flex flex-col gap-4 overflow-y-auto pr-2">
-        <div className="bg-neutral-900/50 backdrop-blur-xl rounded-2xl p-6 ring-1 ring-white/10 shadow-xl">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-indigo-500/20 rounded-xl">
-              <FiClipboard className="text-indigo-400 text-xl" />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold text-white">Client Guidance</h2>
-              <p className="text-sm text-slate-400">Generate checklists & timelines</p>
-            </div>
+    <div className="w-full h-full flex flex-col overflow-y-auto pb-10">
+      {!result && !loading ? (
+        <div className="max-w-4xl mx-auto w-full pt-8 px-4">
+          <div className="mb-10 text-center">
+            <h2 className="text-4xl font-display font-bold text-white mb-4 tracking-tight drop-shadow-lg">
+              Client <span className="text-indigo-400">Guidance</span>
+            </h2>
+            <p className="text-slate-400 text-lg">
+              Describe your client's situation to instantly generate procedural pathways, actionable steps, and documentation checklists based on relevant legal patterns.
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Legal Area / Case Type</label>
-              <select
-                value={caseType}
-                onChange={(e) => setCaseType(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-neutral-800/50 text-slate-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                required
-              >
-                <option value="" disabled>Select the Type of Case</option>
-                <option value="Family - Divorce/Khula">Family Law - Divorce / Khula</option>
-                <option value="Family - Child Custody">Family Law - Child Custody</option>
-                <option value="Property Dispute">Property / Land Dispute</option>
-                <option value="Contract Breach">Commercial - Breach of Contract</option>
-                <option value="Criminal Defense">Criminal Defense</option>
-                <option value="Other">Other (Describe specifically below)</option>
-              </select>
-            </div>
+          <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-8 shadow-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-purple-500/5 opacity-50"></div>
+            
+            <form onSubmit={handleSubmit} className="relative space-y-6 flex flex-col">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">
+                    Select Legal Area / Case Type
+                  </label>
+                  <select
+                    value={caseType}
+                    onChange={(e) => setCaseType(e.target.value)}
+                    className="w-full px-5 py-3.5 rounded-xl border border-white/10 bg-neutral-900/80 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 shadow-inner"
+                    required
+                  >
+                    <option value="" disabled>Select the Type of Case</option>
+                    <option value="Family - Divorce/Khula">Family Law - Divorce / Khula</option>
+                    <option value="Family - Child Custody">Family Law - Child Custody</option>
+                    <option value="Property Dispute">Property / Land Dispute</option>
+                    <option value="Contract Breach">Commercial - Breach of Contract</option>
+                    <option value="Criminal Defense">Criminal Defense</option>
+                    <option value="Other">Other (Describe specifically below)</option>
+                  </select>
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">Situation Description</label>
-              <p className="text-xs text-slate-400 mb-2">Describe the specific factual circumstances so the AI can retrieve relevant procedural laws and precedents.</p>
-              <textarea
-                value={situationDescription}
-                onChange={(e) => setSituationDescription(e.target.value)}
-                rows={5}
-                className="w-full rounded-xl border border-white/10 bg-neutral-800/50 text-slate-200 px-4 py-3 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none"
-                placeholder="E.g., My spouse wants to file for Khula, but we have a joint property and a 4-year-old child..."
-                required
-              />
-            </div>
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-sm font-semibold text-slate-300 mb-2 flex justify-between items-center">
+                    <span>Situation Description <span className="text-rose-400">*</span></span>
+                    <span className="text-xs font-normal text-indigo-400 font-mono">Factual Circumstances</span>
+                  </label>
+                  <textarea
+                    value={situationDescription}
+                    onChange={(e) => setSituationDescription(e.target.value)}
+                    placeholder="E.g., My client's spouse wants to file for Khula, but they have a joint property and a 4-year-old child..."
+                    rows="8"
+                    required
+                    className="w-full px-5 py-4 rounded-xl border border-white/10 bg-neutral-900/80 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 resize-none shadow-inner"
+                  />
+                </div>
+              </div>
 
+              {error && (
+                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-center justify-center font-medium shadow-sm">
+                  {error}
+                </div>
+              )}
+
+              <div className="pt-4 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={loading || !caseType || !situationDescription.trim()}
+                  className="w-full md:w-auto px-10 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg shadow-indigo-500/25 transition-all active:scale-[0.98]"
+                >
+                  <FiClipboard className="text-xl" /> Generate Guidance
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : (
+        <div className="max-w-4xl mx-auto w-full pt-8 px-4 flex flex-col">
+          <div className="flex items-center justify-between xl:-ml-12 mb-8">
             <button
-              type="submit"
-              disabled={loading || !caseType || !situationDescription}
-              className="w-full flex items-center justify-center gap-2 rounded-xl py-3 font-semibold text-white shadow-[0_8px_30px_rgba(99,102,241,0.35)]
-                         bg-[linear-gradient(135deg,#4338CA_0%,#6D28D9_30%,#7C3AED_55%)] hover:shadow-[0_10px_40px_rgba(99,102,241,0.5)] disabled:opacity-50 transition-all"
+              onClick={handleReset}
+              className="px-5 py-2.5 rounded-xl border border-white/10 bg-neutral-900/50 hover:bg-neutral-800 text-slate-300 font-medium transition-colors flex items-center gap-2 group backdrop-blur-md shadow-sm"
             >
-              {loading ? <FiLoader className="animate-spin text-lg" /> : <FiList className="text-lg" />}
-              {loading ? "Generating Report..." : "Generate Guidance Checklist"}
+              <span className="group-hover:-translate-x-1 transition-transform">←</span> Back to Editor
             </button>
-          </form>
+          </div>
 
-          {error && (
-            <div className="mt-4 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
-              {error}
+          {loading ? (
+            <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-16 shadow-2xl flex flex-col items-center justify-center min-h-[400px]">
+              <FiLoader className="text-6xl text-indigo-500 animate-spin mb-6" />
+              <h3 className="text-2xl font-bold text-white mb-2">Formulating Legal Guidance</h3>
+              <p className="text-slate-400 text-lg">Cross-referencing core legal principles and developing a procedural pathway...</p>
+            </div>
+          ) : (
+            <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col">
+              <div className="bg-neutral-800/80 px-8 py-6 border-b border-white/10 flex items-center justify-between">
+                <h3 className="text-2xl font-bold text-white flex items-center gap-3">
+                  <FaLightbulb className="text-indigo-400 text-3xl" /> 
+                  Procedural Guidance Summary
+                </h3>
+                <span className="px-3 py-1 rounded-md bg-indigo-500/20 text-indigo-300 text-sm font-medium border border-indigo-500/20">
+                  {result.caseType}
+                </span>
+              </div>
+              
+              <div className="p-8">
+                  {/* Clean Plain Text Rendering */}
+                  <div className="bg-neutral-900/50 rounded-xl p-8 border border-white/5 shadow-inner">
+                    <div className="text-slate-300 text-base leading-relaxed whitespace-pre-wrap font-serif">
+                       {result.guidance.replace(/\*/g, '')}
+                    </div>
+                  </div>
+
+                  {/* Reference Sources */}
+                  {result.similarCases && result.similarCases.length > 0 && (
+                    <div className="mt-8 pt-6 border-t border-white/10">
+                      <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider flex items-center gap-2">
+                        <FaBookOpen className="text-indigo-400" /> Grounded Case Precedents
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {result.similarCases.map((caseRef, idx) => (
+                          <div key={idx} className="p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
+                            <div className="font-semibold text-slate-200 text-sm mb-1">{caseRef.title || caseRef.parties || 'Unnamed Case'}</div>
+                            <div className="text-xs text-slate-400 flex flex-wrap gap-2 mb-2">
+                              {caseRef.court && <span>🏢 {caseRef.court}</span>}
+                              {caseRef.year && <span>📅 {caseRef.year}</span>}
+                            </div>
+                            {caseRef.citation && (
+                              <div className="text-xs text-indigo-400 mt-2 pt-2 border-t border-white/5">
+                                Citation: {caseRef.citation}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+              </div>
             </div>
           )}
         </div>
-      </div>
-
-      {/* Results Column */}
-      <div className="w-full md:w-2/3 flex flex-col overflow-y-auto pr-2">
-        {!result && !loading ? (
-          <div className="h-full rounded-2xl border border-white/5 border-dashed bg-white/[0.02] flex items-center justify-center text-slate-500 text-center p-8">
-            <div>
-              <FiClipboard className="text-4xl mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium text-slate-300">No Guidance Generated Yet</p>
-              <p className="text-sm mt-2 max-w-sm">Select a category and describe your clients situation to instantly generate grounded legal pathways, documentation checklists, and procedural timelines based on relevant case law.</p>
-            </div>
-          </div>
-        ) : loading ? (
-          <div className="h-full rounded-2xl border border-white/5 bg-neutral-900/30 flex items-center justify-center p-8">
-            <div className="text-center">
-              <FiLoader className="text-4xl mx-auto mb-4 text-indigo-400 animate-spin" />
-              <p className="text-lg font-medium text-slate-300">Researching Database...</p>
-              <p className="text-sm text-slate-500 mt-2">Retrieving similar legal cases and formulating a structured timeline.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="bg-neutral-900/50 backdrop-blur-xl rounded-2xl p-6 md:p-8 ring-1 ring-white/10 shadow-xl overflow-hidden animate-fade-in relative group">
-              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-indigo-500 to-purple-500"></div>
-
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h3 className="text-2xl font-bold text-white mb-2">Procedural Guidance & Checklist</h3>
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-md bg-indigo-500/20 text-indigo-300 text-xs font-medium border border-indigo-500/20">
-                      {result.caseType}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Markdown/Text Content */}
-              <div className="prose prose-invert prose-indigo max-w-none text-slate-300">
-                {result.guidance.split('\n').map((paragraph, index) => {
-                  const txt = paragraph.trim();
-                  if (!txt) return <div key={index} className="h-2"></div>;
-
-                  if (txt.startsWith('Overview') || /^\d+\./.test(txt) || txt.startsWith('#') || txt.includes('Checklist')) {
-                    const stripped = txt.replace(/#|\*/g, '').trim();
-                    return <h4 key={index} className="text-lg font-bold text-white mt-6 mb-3 flex flex-wrap items-center gap-2">
-                      {stripped.includes('Checklist') || stripped.includes('Document') ? <FiList className="text-indigo-400 shrink-0" /> :
-                        stripped.includes('Time') || stripped.includes('Step') ? <FiClock className="text-indigo-400 shrink-0" /> :
-                          stripped.includes('Important') || stripped.includes('Consideration') ? <FiAlertCircle className="text-rose-400 shrink-0" /> :
-                            <FaBookOpen className="text-indigo-400 shrink-0" />}
-                      <span>{stripped}</span>
-                    </h4>;
-                  }
-
-                  if (txt.startsWith('-')) {
-                    const content = txt.replace('-', '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').trim();
-                    return <li key={index} className="mb-2 ml-4 list-disc text-slate-300" dangerouslySetInnerHTML={{ __html: content }}></li>
-                  }
-
-                  const content = txt.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                  return <p key={index} className="mb-3 leading-relaxed break-words" dangerouslySetInnerHTML={{ __html: content }}></p>;
-                })}
-              </div>
-            </div>
-
-            {/* Reference Sources */}
-            {result.similarCases && result.similarCases.length > 0 && (
-              <div className="bg-neutral-900/50 backdrop-blur-xl rounded-2xl p-6 ring-1 ring-white/10 shadow-xl animate-fade-in">
-                <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider flex items-center gap-2">
-                  <FaBookOpen className="text-indigo-400" /> Grounded Database References
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {result.similarCases.map((caseRef, idx) => (
-                    <div key={idx} className="p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
-                      <div className="font-semibold text-slate-200 text-sm mb-1">{caseRef.title || caseRef.parties || 'Unnamed Case'}</div>
-                      <div className="text-xs text-slate-400 flex flex-wrap gap-2 mb-2">
-                        {caseRef.court && <span>🏢 {caseRef.court}</span>}
-                        {caseRef.year && <span>📅 {caseRef.year}</span>}
-                        {caseRef.citation && <span className="text-indigo-400">{caseRef.citation}</span>}
-                      </div>
-                      <div className="text-xs text-slate-500 line-clamp-2 mt-2 pt-2 border-t border-white/5">
-                        Similarity Score: {Math.round((caseRef.similarity || caseRef.score || 0) * 100)}%
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

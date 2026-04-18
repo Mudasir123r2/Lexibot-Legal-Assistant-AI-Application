@@ -383,7 +383,6 @@ class VectorStore:
         with self._get_conn() as conn:
             db_count = conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
         return {
-            "total_documents": self.index.ntotal,
             "total_vectors": self.index.ntotal,
             "total_metadata_chunks": db_count,
             "dimension": self.dimension,
