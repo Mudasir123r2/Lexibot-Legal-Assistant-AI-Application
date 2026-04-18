@@ -367,7 +367,7 @@ export default function JudgmentsDashboard() {
                  <>
                    {/* Optional blur/dim backdrop */}
                    <div 
-                     className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-sm transition-opacity" 
+                     className="fixed inset-0 z-[110] bg-black/20 backdrop-blur-[2px] transition-opacity" 
                      onClick={() => setShowChatOverlay(false)}
                    />
 

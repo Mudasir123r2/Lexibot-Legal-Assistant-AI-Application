@@ -14,29 +14,32 @@ export default function DashboardLayout({ children }) {
 
   useEffect(() => {
     // Only fetch for lawyer/advocate or admin
-    if (user?.role === "advocate" || user?.role === "admin") {
-      const fetchReminders = async () => {
-        try {
-          const { data } = await api.get("/reminders");
-          if (Array.isArray(data)) {
-            const now = new Date();
-            const overdueOrDue = data.filter(r => {
-              if (r.isCompleted) return false;
-              const due = new Date(r.dueDate);
-              if (due <= now) return true; // Overdue
-              // Due today
-              return due.toDateString() === now.toDateString();
-            });
-            
-            // Sort by most urgent/overdue first
-            overdueOrDue.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-            setNotifications(overdueOrDue);
-          }
-        } catch (e) {}
-      };
-      
-      fetchReminders();
-    }
+    const fetchReminders = async () => {
+      if (user?.role !== "advocate" && user?.role !== "admin") return;
+      try {
+        const { data } = await api.get("/reminders");
+        if (Array.isArray(data)) {
+          const now = new Date();
+          const overdueOrDue = data.filter(r => {
+            if (r.isCompleted) return false;
+            const due = new Date(r.dueDate);
+            if (due <= now) return true; // Overdue
+            // Due today
+            return due.toDateString() === now.toDateString();
+          });
+          
+          // Sort by most urgent/overdue first
+          overdueOrDue.sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+          setNotifications(overdueOrDue);
+        }
+      } catch (e) {}
+    };
+
+    fetchReminders();
+
+    // Listen for custom event to refetch when reminders change
+    window.addEventListener("remindersUpdated", fetchReminders);
+    return () => window.removeEventListener("remindersUpdated", fetchReminders);
   }, [user]);
 
   return (

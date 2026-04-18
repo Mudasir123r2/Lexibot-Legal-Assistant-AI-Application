@@ -91,6 +91,7 @@ export default function RemindersDashboard() {
       
       closeDrawer();
       fetchReminders();
+      window.dispatchEvent(new Event("remindersUpdated"));
     } catch (err) {
       console.error(`Error ${editingId ? 'updating' : 'creating'} reminder:`, err);
       alert(err.response?.data?.message || `Failed to ${editingId ? 'update' : 'create'} reminder`);
@@ -102,6 +103,7 @@ export default function RemindersDashboard() {
     try {
       await api.patch(`/reminders/${id}/complete`);
       fetchReminders();
+      window.dispatchEvent(new Event("remindersUpdated"));
     } catch (err) {
       console.error("Error completing reminder:", err);
     }
@@ -112,6 +114,7 @@ export default function RemindersDashboard() {
     try {
       await api.delete(`/reminders/${id}`);
       fetchReminders();
+      window.dispatchEvent(new Event("remindersUpdated"));
     } catch (err) {
       console.error("Error deleting reminder:", err);
     }
