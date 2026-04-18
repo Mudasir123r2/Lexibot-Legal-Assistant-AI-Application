@@ -85,6 +85,7 @@ class TokenData(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    isAdminLogin: Optional[bool] = False
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr

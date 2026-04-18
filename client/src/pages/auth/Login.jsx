@@ -61,10 +61,10 @@ export default function Login({ isAdminLogin = false }) {
               onSubmit={async (values, { setStatus, setSubmitting }) => {
                 setStatus(null);
                 try {
-                  await login(values.email, values.password);
+                  await login(values.email, values.password, isAdminLogin);
                   if (values.remember) localStorage.setItem("remember_email", values.email);
                   else localStorage.removeItem("remember_email");
-                  navigate("/chat");
+                  navigate(isAdminLogin ? "/admin" : "/chat");
                 } catch (err) {
                   setStatus(err.message || "Login failed. Please check your credentials and email verification status.");
                 } finally {

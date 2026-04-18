@@ -4,10 +4,8 @@ import api from "../../../api/http";
 
 export default function ChatTab({ contextData = null, initialMessage = null, hideSidebar = false, selectedDocAvailable = false, isMainDashboard = false, externalShowHistory, setExternalShowHistory }) {
   const getInitialGreeting = () => {
-    if (contextData?.title) {
-        return `The judgment "${contextData.title}" has been successfully loaded into my active context.\n\nI am prepared to assist you with the analysis of this document. Please let me know if you require a summary, extraction of key points, or answers to specific questions regarding this case.`;
-    } else if (contextData?.explicitTextContext) {
-        return `Your custom document has been successfully processed and loaded into my active context.\n\nI am ready to assist you with your legal analysis. Please let me know if you would like me to simplify complex terminology, outline the core arguments, or summarize the text.`;
+    if (contextData?.title || contextData?.explicitTextContext) {
+        return `I am prepared to assist you with the analysis of this document. Please let me know if you require a summary, extraction of key points, or answers to specific questions regarding this case.`;
     }
     return "Hello! I'm LexiBot, your AI legal assistant. I can help you with:\n\n• Summarizing legal judgments\n• Searching for relevant cases\n• Analyzing case outcomes\n• Providing client guidance and checklists\n• Extracting key information from documents\n\nWhat would you like help with today?";
   };

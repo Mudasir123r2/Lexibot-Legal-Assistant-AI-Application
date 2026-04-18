@@ -121,6 +121,23 @@ async def login(credentials: LoginRequest, db = Depends(get_db)):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password"
             )
+            
+        allowed_roles = ["lawyer", "client", "advocate"]
+        
+        if credentials.isAdminLogin:
+            if user.get("role") != "admin":
+                print(f"❌ User with role '{user.get('role')}' attempted admin login")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied. You do not have administrator privileges."
+                )
+        else:
+            if user.get("role") == "admin":
+                print(f"❌ Admin attempted to log in via normal sign-in page")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied. Please use the appropriate admin portal."
+                )
         
         print(f"✅ User found: {user['email']}")
         

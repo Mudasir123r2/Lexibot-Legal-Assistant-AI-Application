@@ -39,7 +39,7 @@ export default function Navbar({ notifications = [], isNotificationsOpen, setIsN
              </button>
 
              {/* Notifications Dropdown */}
-             {notifications && notifications.length > 0 && (
+             {user?.role !== "client" && notifications && notifications.length > 0 && (
                 <div className="relative shrink-0">
                    <button 
                       onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} 

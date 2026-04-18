@@ -3,13 +3,16 @@ import { FaBalanceScale } from "react-icons/fa";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 
 export default function Sidebar({ user, isCollapsed, onToggle }) {
-  const links = [
+  const allLinks = [
     { path: "/chat", label: "Chat" },
-    { path: "/cases", label: "My Cases" },
+    { path: "/cases", label: "My Cases", hideForClient: true },
     { path: "/judgments", label: "Judgments" },
-    { path: "/reminders", label: "Reminders" },
+    { path: "/reminders", label: "Reminders", hideForClient: true },
     { path: "/profile", label: "Profile" },
   ];
+  
+  const links = allLinks.filter(link => !(link.hideForClient && user?.role === "client"));
+
   if (user?.role === "admin") links.push({ path: "/admin", label: "Admin Panel" });
 
   return (
