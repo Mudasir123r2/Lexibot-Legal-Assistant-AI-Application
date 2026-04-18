@@ -18,10 +18,10 @@ export default function JudgmentsDashboard() {
   const [selectedJudgment, setSelectedJudgment] = useState(null);
   const [showChatOverlay, setShowChatOverlay] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  
+
   // Custom Explain states
   const [pastedText, setPastedText] = useState("");
-  
+
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
@@ -45,7 +45,7 @@ export default function JudgmentsDashboard() {
       console.log("SENDING REQUEST WITH PARAMS:", params);
       const response = await api.get('/judgments/search', { params });
       console.log("RECEIVED RESPONSE:", response.data);
-      
+
       setJudgments(response.data.judgments);
       setPagination(response.data.pagination);
     } catch (error) {
@@ -103,7 +103,7 @@ export default function JudgmentsDashboard() {
     // Total safety fallback
     let text = typeof content === 'string' ? content : (content?.fullText || content?.content || "");
     if (typeof text !== 'string') text = String(text);
-    
+
     // Snip everything from JUDGMENT TEXT: onwards
     text = text.split(/(?:\n|^)\s*JUDGMENT TEXT[:\s-]?/i)[0].trim();
 
@@ -126,7 +126,7 @@ export default function JudgmentsDashboard() {
       const isKnownHeader = /^(CASE TITLE|CITATION|COURT|DATE OF DECISION|JUDGES|LAWYERS|STATUTES|FACTS|ISSUE|REASONING|HOLDING|CONCLUSION)/.test(cleanPara);
       const isColonHeader = cleanPara.length < 60 && cleanPara.endsWith(':') && cleanPara === cleanPara.toUpperCase();
       const isHeader = isKnownHeader || isColonHeader;
-      
+
       if (isHeader) {
          return (
            <div key={idx} className="w-full mt-6 mb-2">
@@ -147,7 +147,7 @@ export default function JudgmentsDashboard() {
   return (
     <DashboardLayout>
       <div className="relative flex-1 flex flex-col font-sans min-h-0">
-        
+
         {/* If an ID exists but no judgment is loaded yet, show loading instead of search */}
         {id && !selectedJudgment ? (
           <div className="flex-1 flex flex-col items-center justify-center p-20">
@@ -156,7 +156,7 @@ export default function JudgmentsDashboard() {
           </div>
         ) : !selectedJudgment ? (
           <div className="flex-1 flex flex-col items-center justify-start overflow-y-auto w-full max-w-5xl mx-auto py-10 px-4 scrollbar-hide">
-            
+
             <div className="w-full text-center mb-10">
               <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 tracking-tight drop-shadow-lg">
                 Legal <span className="text-indigo-400">Workspace</span>
@@ -249,7 +249,7 @@ export default function JudgmentsDashboard() {
                   <h2 className="text-xl font-bold text-white">Search Results</h2>
                   <span className="text-sm text-slate-400">Found {pagination.total} precedents</span>
                 </div>
-                
+
                 {judgments.length === 0 && !loading && (
                     <div className="text-center p-12 bg-neutral-900/40 rounded-2xl border border-white/5 border-dashed">
                       <FaSearch className="text-4xl text-slate-600 mx-auto mb-4" />
@@ -278,15 +278,15 @@ export default function JudgmentsDashboard() {
                                  {judgment.journal && <span className="flex items-center gap-1 text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded"><FiFileText size={12}/> <b>Journal:</b> {judgment.journal}</span>}
                                  {judgment.caseNumber && judgment.caseNumber !== "N/A" && <span className="flex items-center gap-1 text-sky-400 bg-sky-400/10 px-2 py-1 rounded"><FiFileText size={12}/> <b>Appeal No:</b> {judgment.caseNumber}</span>}
                                </div>
-                               
+
                                {/* People / Parties */}
                                {judgment.parties && <span className="flex items-center gap-1.5 text-indigo-300 truncate w-full" title={judgment.parties}><FiFileText className="shrink-0"/> <span className="font-semibold text-slate-400">Parties:</span> {judgment.parties}</span>}
                                {judgment.lawyers && <span className="flex items-center gap-1.5 text-rose-300 line-clamp-1 w-full" title={judgment.lawyers}><FiFileText className="shrink-0"/> <span className="font-semibold text-slate-400">Lawyers:</span> {judgment.lawyers}</span>}
-                               
+
                                {/* Meta Facts */}
                                {judgment.statutes && <span className="flex items-center gap-1.5 text-amber-300 line-clamp-1 w-full" title={judgment.statutes}><FiFileText className="shrink-0"/> <span className="font-semibold text-slate-400">Statutes:</span> {judgment.statutes}</span>}
                             </div>
-                            
+
                             <div className="w-full flex items-center justify-between text-slate-400 border-t border-white/5 pt-2 mt-1">
                                <span className="flex items-center gap-1.5"><FaGavel className="text-slate-500"/> {judgment.court || 'Court N/A'}</span>
                                <span className="flex items-center gap-1.5"><FaCalendar className="text-slate-500"/> {judgment.year && judgment.year !== 'Unknown' ? judgment.year : (judgment.dateOfJudgment ? (isNaN(new Date(judgment.dateOfJudgment)) ? judgment.dateOfJudgment : new Date(judgment.dateOfJudgment).getFullYear()) : 'Year N/A')}</span>
@@ -296,7 +296,7 @@ export default function JudgmentsDashboard() {
                       ))}
                     </div>
                 )}
-                
+
                 {/* Clean Pagination */}
                 {pagination.total > pagination.limit && !loading && (
                   <div className="flex justify-center items-center gap-4 mt-8 mb-10">
@@ -309,7 +309,7 @@ export default function JudgmentsDashboard() {
             )}
           </div>
         ) : (
-          
+
           /* STATE 2: DEEP ANALYSIS WORKSPACE (SPLIT SCREEN) */
           <div className="fixed inset-0 z-[100] flex flex-col bg-black overflow-hidden opacity-100 animate-fade-in w-screen h-screen">
             {/* Top Bar Navigation */}
@@ -335,7 +335,7 @@ export default function JudgmentsDashboard() {
 
             {/* Split Panels */}
             <div className="flex-1 flex overflow-hidden min-h-0">
-               
+
                {/* Left: Document Reader (Full Screen) */}
                <div className="flex-1 w-full bg-[#1a1c23] overflow-y-auto p-8 lg:p-12 relative scrollbar-hide">
                   <div className="max-w-5xl mx-auto transition-all duration-300">
@@ -356,7 +356,7 @@ export default function JudgmentsDashboard() {
                          </div>
                        </div>
                      )}
-                     
+
                      <div className="prose prose-invert max-w-none text-slate-300 pb-32">
                         {renderReadableText(selectedJudgment.fullText || selectedJudgment.content)}
                      </div>
@@ -371,7 +371,7 @@ export default function JudgmentsDashboard() {
                      className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-sm transition-opacity" 
                      onClick={() => setShowChatOverlay(false)}
                    />
-                   
+
                    <div className="fixed right-0 inset-y-0 z-[120] w-full sm:w-1/2 lg:w-1/2 border-l border-white/10 bg-neutral-900/95 shadow-[rgba(0,0,0,0.8)_-20px_0_50px] flex flex-col overflow-hidden animate-slide-in-right">
                      <div className="h-[70px] px-4 border-b border-white/5 bg-black/40 flex items-center shadow-sm shrink-0 backdrop-blur-md">
                        <div className="flex items-center gap-4 w-full">
@@ -393,7 +393,7 @@ export default function JudgmentsDashboard() {
                          </div>
                        </div>
                      </div>
-                     
+
                      <div className="flex-1 relative min-h-0 bg-[#121318]/90">
                        <div className="absolute inset-0 h-full w-full flex">
                          <ChatTab 
@@ -428,9 +428,8 @@ export default function JudgmentsDashboard() {
             </div>
           </div>
         )}
-        
+
       </div>
     </DashboardLayout>
   );
 }
-

@@ -1,0 +1,1 @@
+import requests; res = requests.post('http://127.0.0.1:5000/judgments/search', json={'query': 'divorce cases', 'limit': 19}); print('Status:', res.status_code); data = res.json(); print('Results count:', len(data.get('results', [])) if isinstance(data, dict) else 'Error: not a dict'); print('Easylaw filtered size:', data.get('total') if isinstance(data, dict) else '');

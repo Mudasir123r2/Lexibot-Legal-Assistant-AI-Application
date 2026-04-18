@@ -9,33 +9,33 @@ def _auto_heal_ocr_spaces(text: str) -> str:
         # If both fragments are suspiciously long, it's probably two valid words
         if len(w1) > 3 and len(w2) > 3:
             return m.group(0)
-        
+
         w1_u, w2_u = w1.upper(), w2.upper()
         # Prevent merging known valid short English words
         if w1_u in ('AT','THAT','AND','TO','IN','IT','IS','THE','A','OF','ON','AS','AN','NO','OR','SO','BY','MY','UP','VS','V') or \
            w2_u in ('A','ALL','ARE','AND','THE','OF','AT','IT','AS','AN','AM','NO','ON','IN','IF','IS','SO','OR','UP','US','VS','V'):
             return m.group(0)
-            
+
         return w1 + w2
 
     # 1. Word ending in diagonal/overhang letter + Word starting with vowel
     text = re.sub(r'\b([A-Za-z]{1,7}[WTVPYFKwtvpyfk])\s+([AaEeIiOoUu][A-Za-z]{1,7})\b', repl, text)
-    
+
     # 2. Word ending in vowel + Word starting with diagonal/overhang letter
     text = re.sub(r'\b([A-Za-z]{1,7}[AaEeIiOoUu])\s+([WTVPYFKwtvpyfk][A-Za-z]{1,7})\b', repl, text)
-    
+
     # 3. Single isolated initial letters merging into a vowel word (W AHEED, P ARVEEN)
     text = re.sub(r'\b([WTVPYFKwtvpyfk])\s+([AaEeIiOoUu][A-Za-z]{2,7})\b', repl, text)
-    
+
     # 4. Stray single consonant at end of word (FAMIL Y -> FAMILY)
     text = re.sub(r'\b([A-Za-z]{3,})\s+([B-DF-HJ-NP-TV-Z])\b', repl, text)
-    
+
     # 5. Stray single consonant at start of word (T ARIQ -> TARIQ) 
     text = re.sub(r'\b([B-DF-HJ-NP-TV-Z])\s+([A-Za-z]{3,})\b', repl, text)
 
     # 6. Manual target for S TATE (S and T don't fit above vowel rules perfectly)
     text = re.sub(r'\b([Ss])\s+(TATE|tate)\b', r'\1\2', text)
-    
+
     # 7. Aggressive domain-specific overrides - ignoring weird boundaries and numbers
     text = re.sub(r'(?i)moht\s*arma', 'MOHTARMA', text)
     text = re.sub(r'(?i)df?edera\s*tion', 'FEDERATION', text)
@@ -46,6 +46,7 @@ def _auto_heal_ocr_spaces(text: str) -> str:
     text = re.sub(r'(?i)dep\s*artment', 'DEPARTMENT', text)
     text = re.sub(r'(?i)sharia\s*t', 'SHARIAT', text)
     text = re.sub(r'(?i)f\s*asih', 'FASIH', text)
+    
     text = re.sub(r'(?i)\bbalochist\s*an\b', 'Balochistan', text)
     text = re.sub(r'(?i)\bpeshaw\s*ar\b', 'Peshawar', text)
     text = re.sub(r'(?i)\bpesha\s*war\b', 'Peshawar', text)
@@ -59,7 +60,7 @@ def _auto_heal_ocr_spaces(text: str) -> str:
     # Finally, fix VEDANT and COMMISSIONER manual bugs as seen globally
     text = text.replace('VDANT', 'VEDANT')
     text = text.replace('OMMISSIONER', 'COMMISSIONER')
-    
+
     return text
 
 COURT_CANONICAL = {
@@ -81,30 +82,30 @@ def canonical_court(text: str) -> str:
     import re
     # Fix extreme OCR spacing
     text = re.sub(r'(?<![a-zA-Z])(?:[a-zA-Z]\s+){3,}[a-zA-Z](?![a-zA-Z])', lambda m: m.group(0).replace(' ', ''), text)
-    
+
     t = text.strip()
     for pat, name in COURT_CANONICAL.items():
         if re.search(pat, t, re.IGNORECASE):
             return name
     # Remove leading "THE " and title-case
     t = re.sub(r'(?i)^the\s+', '', t).strip()
-    
+
     t = t.replace('Appella Te', 'Appellate')
     t = t.replace('P Akist An', 'Pakistan')
     t = t.replace('Tribunal Appella Te', 'Tribunal Appellate')
-    
+
     return re.sub(r'\s+', ' ', t).title() if t else ""
 
 def extract_court(db_court: str, header_text: str) -> str:
     """Intelligently extract and format the court from DB meta or OCR header."""
     db_court = str(db_court or "").strip()
     header_text = str(header_text or "")[:800]
-    
+
     # 1. Prefer OCR extraction if it's explicitly stated in an Easy Law header block!
     court_hdr = re.search(r'\bCourt\s*\:\s*([A-Z][a-zA-Z0-9\s]+?)(?=\s+(?:Date|Appeal|Judge|Journal|Parties)\b|$)', header_text, re.IGNORECASE)
     if not court_hdr:
         court_hdr = re.search(r'\bCourt\b\s+([A-Z][A-Z\s]+?)(?=\s+(?:Date|Appeal|Judge|Journal|Parties)\b|$)', header_text, re.IGNORECASE)
-    
+
     if court_hdr and len(court_hdr.group(1).strip()) > 3:
         # Check against canon
         c_court = canonical_court(court_hdr.group(1))
@@ -113,7 +114,7 @@ def extract_court(db_court: str, header_text: str) -> str:
     # 2. Prefer database metadata field if it exists and is valid
     if db_court and len(db_court) > 3:
         return canonical_court(db_court)
-        
+
     return ""
 
 def extract_full_metadata(header_text: str) -> dict:
@@ -129,32 +130,32 @@ def extract_full_metadata(header_text: str) -> dict:
         "lawyers": "",
         "statutes": ""
     }
-    
+
     # Simple regex grabs for the structured blocks EasyLaw puts at the top
     journal_match = re.search(r'Journal[\:\s]+([^C]*?)(?=\s+Court\b)', header_text, re.IGNORECASE)
     if journal_match: meta["journal"] = journal_match.group(1).strip()
-    
+
     court_match = re.search(r'Court[\:\s]+(.*?)(?=\s+Date\b)', header_text, re.IGNORECASE)
     if court_match: meta["court"] = canonical_court(court_match.group(1).strip())
-    
+
     date_match = re.search(r'Date[\:\s]+([\w\s\-]+?)(?=\s+Appeal\b)', header_text, re.IGNORECASE)
     if date_match: meta["date"] = date_match.group(1).strip()
-    
+
     appeal_match = re.search(r'Appeal(?:\s+No\.?)?[\:\s]+(.*?)(?=\s+Judge\b)', header_text, re.IGNORECASE)
     if appeal_match: meta["appeal_no"] = appeal_match.group(1).strip()
-    
+
     judge_match = re.search(r'Judge[\:\s]+(.*?)(?=\s+Parties\b)', header_text, re.IGNORECASE)
     if judge_match: meta["judge"] = judge_match.group(1).strip()
-    
+
     parties_match = re.search(r'(?:Parties|arties)[\:\s]+(.*?)(?=\s+(?:Lawyers\b|$|\n))', header_text, re.IGNORECASE)
     if parties_match: meta["parties"] = parties_match.group(1).strip()
-    
+
     lawyers_match = re.search(r'Lawyers[\:\s]+(.*?)(?=\s+(?:Statut?es\b|$|\n))', header_text, re.IGNORECASE)
     if lawyers_match: meta["lawyers"] = _auto_heal_ocr_spaces(lawyers_match.group(1).strip())
-    
+
     statues_match = re.search(r'Statut?es[\:\s]+(.*?)(?=\s+(?:Judgment\b|$|\n))', header_text, re.IGNORECASE)
     if statues_match: meta["statutes"] = statues_match.group(1).strip()
-    
+
     return meta
 
 def format_judgment_title(citation: str, court: str, original_title: str = "", excerpt: str = "", source_file: str = "") -> str:
@@ -197,24 +198,24 @@ def format_judgment_title(citation: str, court: str, original_title: str = "", e
     def _clean_party(name: str) -> str:
         """Strip noise words and role labels from a party name."""
         import re
-        
+
         # Repair extreme OCR spacing (S U P R E M E -> SUPREME)
         name = re.sub(r'(?<![a-zA-Z])(?:[a-zA-Z]\s+){3,}[a-zA-Z](?![a-zA-Z])', lambda m: m.group(0).replace(' ', ''), name)
-        
+
         # Smart Heuristic to fix broken OCR words (NA WAB, ANW AR, ST ATE) globally
         name = _auto_heal_ocr_spaces(name)
-        
+
         # Remove any leading garbage prefixes (like "arties:" or ". ")
         name = re.sub(r'^(?:[Pp]arty|[Pp]arties|[Aa]rties|PARTIES)[\s:]*', '', name).strip()
         name = re.sub(r'^[\.\-\,\s]+', '', name)
-        
+
         # Remove anything before and including a stray closing parenthesis if it exists at the start
         name = re.sub(r'^[^()]*\)\s*', '', name)
-        
+
         # Remove colon/dot labeled roles: "RESPONDENT :DEP ARTMENT", "ASSESSEE.APPELLANT :"
         name = re.sub(r'(?i)\b(?:RESPONDENTS?|APPELLANTS?|PETITIONERS?|PLAINTIFFS?|DEFENDANTS?|ASSESSEES?)[\s\:\.]+', '', name)
         name = re.sub(r'(?i)[\s\:\.]+(?:RESPONDENTS?|APPELLANTS?|PETITIONERS?|PLAINTIFFS?|DEFENDANTS?|ASSESSEES?)\b', '', name)
-        
+
         # Remove parenthetical role labels and OCR junk like (In CA 2148) or (In Both Cases)
         name = re.sub(r'\s*\((?:Appellant|Petitioner|Plaintiff|Respondent|Defendant|APPELLANT|PETITIONER|PLAINTIFF|RESPONDENT|DEFENDANT|Applicant|APPLICANT)s?\)', '', name, flags=re.IGNORECASE)
         name = re.sub(r'\s*\([iI]n\s+(?:Both\s+)?(?:C[A-Z0-9\.\s]+|\bCases?|\bC\.\s*A\.\s*).*?\)', '', name, flags=re.IGNORECASE)
@@ -224,17 +225,17 @@ def format_judgment_title(citation: str, court: str, original_title: str = "", e
         name = re.sub(r'\b(?:alias|aka)\b.*', '', name, flags=re.IGNORECASE)
         # Strip '& [x] others' or 'and [x] others'
         name = re.sub(r'\b(?:and|&)\s+\d+\s+others?\b', '', name, flags=re.IGNORECASE)
-        
+
         # Replace 1 -> I in capital words (like D1N, ANSAR1, AS1H)
         name = re.sub(r'([A-Za-z])1([A-Za-z])', r'\1I\2', name)
         name = re.sub(r'([A-Za-z])1\b', r'\1I', name)
         name = re.sub(r'\b1([A-Za-z])', r'I\1', name)
         name = name.replace('DEP ARTMENT', 'DEPARTMENT')
         name = name.replace('F ASIH', 'FASIH')
-        
+
         # Remove directly attached roles at the end of names like ANWARPETITIONER -> ANWAR
         name = re.sub(r'(?i)(.*?)(PETITIONER|RESPONDENT|APPELLANT|PLAINTIFF|DEFENDANT|APPLICANT)S?', r'\1', name)
-        
+
         noise = r'\b(the|and|through|LRs?|deceased|decd|mr|mrs|mst|etc|others?|another|alias|parties|party|\d+)\b'
         name  = re.sub(noise, '', name, flags=re.IGNORECASE)
         name  = re.sub(r'\s+', ' ', name).strip().strip('(),. ')
@@ -244,9 +245,9 @@ def format_judgment_title(citation: str, court: str, original_title: str = "", e
         """Final sweep to catch broken strings like 'v. ERSUS' before rendering."""
         t = re.sub(r'^(?i).*?(?:bench|nch|\bcourt)\s*,\s*(?:[a-zA-Z\s\.]+\s+)?in\s+', '', t).strip()
         t = re.sub(r'^(?i).*?(?:bench|nch)\s*,\s*', '', t).strip()
-        
+
         t = _auto_heal_ocr_spaces(t)
-        
+
         # Hard fallback regex replacements ignoring word boundaries to catch attached garbage like "BHUTT O2" or "DFEDERA TION"
         t = re.sub(r'(?i)moht\s*arma', 'MOHTARMA', t)
         t = re.sub(r'(?i)df?edera\s*tion', 'FEDERATION', t)
@@ -257,7 +258,7 @@ def format_judgment_title(citation: str, court: str, original_title: str = "", e
         t = re.sub(r'(?i)dep\s*artment', 'DEPARTMENT', t)
         t = re.sub(r'(?i)sharia\s*t', 'SHARIAT', t)
         t = re.sub(r'(?i)f\s*asih', 'FASIH', t)
-        
+
         t = re.sub(r'v\.\s*[Ee][rR][sS][uU][sS]', 'v.', t)
         t = re.sub(r'\bVERSUS\b', 'v.', t, flags=re.IGNORECASE)
         t = t.replace('KAUSARPARVEEN . STATE', 'KAUSAR PARVEEN')
@@ -377,7 +378,7 @@ def format_judgment_title(citation: str, court: str, original_title: str = "", e
         best_court = best_court.replace('of pakistan', 'of Pakistan')
         # Build citation string
         citation_str = f"{best_reporter} — {best_court}" if (best_reporter and best_court) else (best_reporter or best_court)
-        
+
         if parties_str and case_type_str:
             return _finalize_title(f"{parties_str} [{case_type_str}] — {citation_str}")
         elif parties_str:
