@@ -277,12 +277,8 @@ class RAGPipeline:
             filters = {"case_type": case_type} if case_type else None
             similar_cases = self.search_judgments(case_description, top_k=10, filters=filters)
             
-            if not similar_cases:
-                return {
-                    "prediction": "Insufficient data for prediction",
-                    "confidence": 0.0,
-                    "similar_cases": []
-                }
+            # Use found similar cases if any, else we'll rely on the LLM's general knowledge.
+            has_cases = bool(similar_cases)
             
             # Analyze outcomes of similar cases
             outcomes = {}
@@ -293,59 +289,65 @@ class RAGPipeline:
             # Most common outcome
             predicted_outcome = max(outcomes, key=outcomes.get) if outcomes else "Unknown"
             confidence = (outcomes[predicted_outcome] / len(similar_cases)) * 100 if outcomes else 0
-            
-            # Build rich context for LLM
-            context_parts = []
-            for i, case in enumerate(similar_cases[:8], 1):
-                case_info = f"""Case {i}: {case.get('title', 'N/A')}
+
+            # Build rich context for LLM if cases exist
+            context_text = ""
+            if has_cases:
+                context_parts = []
+                for i, case in enumerate(similar_cases[:8], 1):
+                    # We don't expose case name if it's missing or to prevent hallucination, 
+                    # but we provide the context for the LLM to learn from.
+                    case_info = f"""Sample Case {i} Info:
 - Court: {case.get('court', 'N/A')}
-- Date: {case.get('date', 'N/A')}
 - Outcome: {case.get('outcome', 'N/A')}
-- Summary: {case.get('excerpt', 'N/A')[:200]}
-- Similarity: {case.get('similarity', 0) * 100:.1f}%"""
-                context_parts.append(case_info)
-            
-            context_text = "\n\n".join(context_parts)
+- Summary: {case.get('excerpt', 'N/A')[:300]}"""
+                    context_parts.append(case_info)
+                context_text = "Similar Historical Context for Reasoning:\n\n" + "\n\n".join(context_parts)
+            else:
+                context_text = "No exact similar cases found in the database. Rely on general legal principles for your analysis."
             
             # Generate comprehensive analysis using LLM
-            prompt = f"""You are an expert legal analyst specializing in case outcome prediction.
-
-Based on these similar historical cases from Pakistani courts:
-
-{context_text}
-
----
-
-Current Case Description:
+            prompt = f"""Current Case Description provided by User:
 {case_description}
 
 Case Type: {case_type or 'General'}
 
-Task: Provide a comprehensive outcome prediction analysis in the following format:
+{context_text}
 
-1. PREDICTED OUTCOME: [State the most likely outcome based on precedents]
+Task: Provide a comprehensive outcome prediction analysis for the user using the format below. 
 
-2. DETAILED REASONING: [Explain why this outcome is predicted, referencing specific similar cases and patterns]
+Format Requirements:
+1. Case Strength Indicator (State strictly "Strong", "Moderate", or "Weak")
+2. Confidence Score (Provide a percentage, e.g., "75%")
+3. Understanding of the Case
+4. Predicted Outcome
+5. Legal Reasoning
+6. Applicable Laws
+7. Actionable Advice (List concrete steps the user should take)
+8. Disclaimer
 
-3. RISK FACTORS: [List 3-5 key risks or weaknesses in the case]
-- Risk 1
-- Risk 2
-- etc.
+Important instructions:
+- JURISDICTION: This system operates strictly under the legal framework of PAKISTAN. ONLY reference Pakistani laws, such as the Transfer of Property Act 1882, Registration Act 1908 (as applicable in PK), Limitation Act 1908, Specific Relief Act 1877, Qanun-e-Shahadat Order 1984, etc. NEVER cite foreign or explicitly Indian laws (like Municipal Corporation Act 1956).
+- OUTCOME PREDICTION: Do not just say the outcome is uncertain. You MUST lean toward a probable outcome based on the facts provided (e.g. "It is highly probable the court will rule in favor of X because..."), even while adding a disclaimer that courts have the final say.
+- REASONING PATTERNS: Use precise legal reasoning. Mention core legal concepts like "Burden of proof", "Title vs Possession", "Limitation law", or "Bona fide purchaser" where applicable. Use strong legal phrasing (e.g., "The burden of proof rests on...", "Under the principle of...", "A registered instrument carries a presumption of truth under...") rather than generic statements.
+- Do not mention phrases like "RAG", "Vector databases", "SQLite", "Embeddings", "Retrieval", or backend architecture.
+- Do NOT hallucinate case names. If referencing context, say "In similar precedents, courts have held that...".
+- Do NOT use markdown bolding or stars (e.g. asterisks) in your response. No **text** allowed. Provide plain text headers.
+"""
 
-4. RECOMMENDATIONS: [Provide 3-5 actionable recommendations]
-- Recommendation 1
-- Recommendation 2
-- etc.
-
-5. LEGAL BASIS: [Cite relevant legal principles, precedents, or patterns from the similar cases]
-
-6. CONFIDENCE ANALYSIS: [Explain the confidence level and any uncertainties]
-
-Be specific, objective, and reference the similar cases by their case numbers where applicable."""
+            system_prompt = """You form the core of LexiBot's Case Outcome Prediction System operating strictly under Pakistan Jurisdiction. 
+Your Role: Analyze case descriptions and predict outcomes using precise legal reasoning, identifying applicable Pakistani laws, and adapting to the presence or absence of similar case contexts.
+Rules:
+- PAKISTAN LAW ONLY. Absolutely no foreign laws.
+- Provide a probable outcome rather than a completely generic safe answer, while explaining the risks.
+- Include core legal principles like Burden of Proof, Title vs Possession, and Limitation laws when evaluating property or civil matters.
+- STRICTLY NO hallucinating case names or citations.
+- STRICTLY NO mention of your retrieval system, databases, backend searches, or system architecture.
+- DO NOT use markdown bolding (no asterisks). Use plain text block format."""
 
             full_analysis = self.llm_service.generate_response(
                 prompt=prompt,
-                system_prompt="You are an expert Pakistani legal analyst. Provide detailed, objective predictions based on case precedents. Be thorough but clear.",
+                system_prompt=system_prompt,
                 max_tokens=1500,
                 temperature=0.2  # Lower for more consistent predictions
             )
@@ -355,7 +357,7 @@ Be specific, objective, and reference the similar cases by their case numbers wh
             
             # Extract sections
             reasoning_match = re.search(r'2\. DETAILED REASONING:(.+?)(?=3\. RISK FACTORS:|$)', full_analysis, re.DOTALL)
-            reasoning = reasoning_match.group(1).strip() if reasoning_match else full_analysis[:500]
+            reasoning = reasoning_match.group(1).strip() if reasoning_match else full_analysis
             
             risk_match = re.search(r'3\. RISK FACTORS:(.+?)(?=4\. RECOMMENDATIONS:|$)', full_analysis, re.DOTALL)
             risk_text = risk_match.group(1).strip() if risk_match else ""

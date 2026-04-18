@@ -118,7 +118,7 @@ export default function JudgmentsDashboard() {
 
     const paragraphs = text.split(/\n+/).filter(p => p.trim().length > 0);
     return paragraphs.map((para, idx) => {
-      // Clean any accidental markdown asterisks left by LLM
+      // Clean any accidental markdown asterisks left by AI
       const cleanPara = para.replace(/\*/g, '').trim();
       if (!cleanPara) return null;
 
@@ -162,8 +162,7 @@ export default function JudgmentsDashboard() {
                 Legal <span className="text-indigo-400">Workspace</span>
               </h1>
               <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-                Search through our comprehensive legal database or securely paste 
-                your own complex legal documents for immediate AI analysis.
+                Search through our comprehensive legal database for immediate AI analysis.
               </p>
             </div>
 

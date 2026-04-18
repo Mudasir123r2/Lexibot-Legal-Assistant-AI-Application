@@ -238,7 +238,7 @@ export default function RemindersDashboard() {
                               <div className={`font-bold ${isOverdue(r.dueDate) ? 'text-rose-400' : 'text-amber-400'}`}>
                                  {new Date(r.dueDate).toLocaleDateString()}
                               </div>
-                              {r.caseId && <div className="text-indigo-400 text-xs font-medium">Linked: {r.caseId.title || "Ref Case"}</div>}
+                              {r.caseId && <div className="text-indigo-400 text-xs font-medium">Linked: {r.case?.title || "Ref Case"}</div>}
                            </div>
 
                            {/* Always visible actions */}
@@ -276,7 +276,7 @@ export default function RemindersDashboard() {
                               <div className="text-slate-300 font-medium">
                                  {new Date(r.dueDate).toLocaleDateString()}
                               </div>
-                              {r.caseId && <div className="text-indigo-400/70 text-xs">Linked: {r.caseId.title || "Ref Case"}</div>}
+                              {r.caseId && <div className="text-indigo-400/70 text-xs">Linked: {r.case?.title || "Ref Case"}</div>}
                            </div>
 
                            {/* Always visible actions */}

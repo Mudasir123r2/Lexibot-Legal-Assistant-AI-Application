@@ -135,7 +135,7 @@ export default function ClientGuidance() {
                 </div>
               </div>
 
-              {/* RAG Rendered Markdown/Text Content */}
+              {/* Markdown/Text Content */}
               <div className="prose prose-invert prose-indigo max-w-none text-slate-300">
                 {result.guidance.split('\n').map((paragraph, index) => {
                   const txt = paragraph.trim();
@@ -163,7 +163,7 @@ export default function ClientGuidance() {
               </div>
             </div>
 
-            {/* RAG Reference Sources */}
+            {/* Reference Sources */}
             {result.similarCases && result.similarCases.length > 0 && (
               <div className="bg-neutral-900/50 backdrop-blur-xl rounded-2xl p-6 ring-1 ring-white/10 shadow-xl animate-fade-in">
                 <h4 className="text-sm font-bold text-white mb-4 uppercase tracking-wider flex items-center gap-2">

@@ -114,7 +114,7 @@ export default function AdminDashboard() {
       // Calculate feedback stats
       const total = data.feedbacks?.length || 0;
       const pending = data.feedbacks?.filter(f => f.status === "pending").length || 0;
-      const positive = data.feedbacks?.filter(f => f.rating === "positive").length || 0;
+      const positive = data.feedbacks?.filter(f => f.rating >= 4).length || 0;
       const avgRating = total > 0 ? Math.round((positive / total) * 100) : 0;
       setFeedbackStats({ total, pending, avgRating });
     } catch (err) {

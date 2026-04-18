@@ -56,6 +56,7 @@ class ReminderResponse(ReminderBase):
     notificationSentAt: Optional[datetime] = None
     createdAt: datetime
     updatedAt: datetime
+    case: Optional[dict] = None
     
     class Config:
         populate_by_name = True

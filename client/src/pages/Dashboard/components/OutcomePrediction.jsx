@@ -97,363 +97,143 @@ export default function OutcomePrediction() {
   ] : [];
 
   return (
-    <div className="relative w-full h-full flex flex-col">
-      <div className="mb-6 shrink-0">
-        <h2 className="text-2xl font-display font-bold text-white mb-2">Case Outcome Prediction</h2>
-        <p className="text-slate-400 text-sm">AI-powered predictions using RAG + LLM analysis of similar cases</p>
-      </div>
+    <div className="w-full h-full flex flex-col overflow-y-auto pb-10">
+      {!prediction && !loading ? (
+        <div className="max-w-4xl mx-auto w-full pt-8 px-4">
+          <div className="mb-10 text-center">
+            <h2 className="text-4xl font-display font-bold text-white mb-4 tracking-tight drop-shadow-lg">
+              Case Outcome <span className="text-indigo-400">Prediction</span>
+            </h2>
+            <p className="text-slate-400 text-lg">
+              Provide your case details and receive a professional, AI-powered probable outcome analysis based strictly on Pakistani law and precedent.
+            </p>
+          </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0">
-        {/* Input Form */}
-        <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-6 shadow-xl h-fit lg:h-full flex flex-col overflow-y-auto">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <FaBrain className="text-indigo-400" />
-            Enter Case Information
-          </h3>
+          <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-8 shadow-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-purple-500/5 opacity-50"></div>
+            
+            <form onSubmit={handleSubmit} className="relative space-y-6 flex flex-col">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">
+                    Select Case Category
+                  </label>
+                  <select
+                    value={formData.caseType}
+                    onChange={(e) => setFormData({ ...formData, caseType: e.target.value })}
+                    className="w-full px-5 py-3.5 rounded-xl border border-white/10 bg-neutral-900/80 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 shadow-inner"
+                  >
+                    <option value="Civil">Civil</option>
+                    <option value="Criminal">Criminal</option>
+                    <option value="Family">Family</option>
+                    <option value="Corporate">Corporate</option>
+                    <option value="Property">Property</option>
+                    <option value="Contract">Contract</option>
+                    <option value="Employment">Employment</option>
+                    <option value="Constitutional">Constitutional</option>
+                  </select>
+                </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 flex-1 flex flex-col">
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Case Type
-              </label>
-              <select
-                value={formData.caseType}
-                onChange={(e) => setFormData({ ...formData, caseType: e.target.value })}
-                className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
-              >
-                <option value="Civil">Civil</option>
-                <option value="Criminal">Criminal</option>
-                <option value="Family">Family</option>
-                <option value="Corporate">Corporate</option>
-                <option value="Property">Property</option>
-                <option value="Contract">Contract</option>
-                <option value="Employment">Employment</option>
-                <option value="Constitutional">Constitutional</option>
-              </select>
-            </div>
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-sm font-semibold text-slate-300 mb-2 flex justify-between items-center">
+                    <span>Case Description <span className="text-rose-400">*</span></span>
+                    <span className="text-xs font-normal text-indigo-400 font-mono">Facts, Parties, Current Status</span>
+                  </label>
+                  <textarea
+                    value={formData.caseDescription}
+                    onChange={(e) => setFormData({ ...formData, caseDescription: e.target.value })}
+                    placeholder="E.g., I purchased a plot of land 3 years ago and have been living there. Another person has claimed ownership citing old documents..."
+                    rows="8"
+                    required
+                    className="w-full px-5 py-4 rounded-xl border border-white/10 bg-neutral-900/80 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 resize-none shadow-inner"
+                  />
+                </div>
 
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Case Description *
-              </label>
-              <textarea
-                value={formData.caseDescription}
-                onChange={(e) => setFormData({ ...formData, caseDescription: e.target.value })}
-                placeholder="Describe your case in detail: facts, circumstances, parties involved, key issues, current status, and what you're seeking..."
-                rows="8"
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 resize-none"
-              />
-              <p className="text-xs text-slate-500 mt-1">💡 Be specific about dates, events, and legal issues for better predictions</p>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm">
-                {error}
+                <div className="col-span-1 md:col-span-2">
+                  <label className="block text-sm font-semibold text-slate-300 mb-2">
+                    Legal Context (Optional)
+                  </label>
+                  <textarea
+                    value={formData.legalContext}
+                    onChange={(e) => setFormData({ ...formData, legalContext: e.target.value })}
+                    placeholder="Provide any specific laws, statutes, or existing arguments you are already considering..."
+                    rows="4"
+                    className="w-full px-5 py-3.5 rounded-xl border border-white/10 bg-neutral-900/80 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 resize-none shadow-inner"
+                  />
+                </div>
               </div>
-            )}
 
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Legal Context (Optional)
-              </label>
-              <textarea
-                value={formData.legalContext}
-                onChange={(e) => setFormData({ ...formData, legalContext: e.target.value })}
-                placeholder="Provide relevant legal context: applicable laws, precedents, statutes, regulations, or specific legal arguments..."
-                rows="5"
-                className="w-full px-4 py-2.5 rounded-xl border border-white/10 bg-neutral-900/60 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 resize-none"
-              />
-            </div>
+              {error && (
+                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm flex items-center justify-center font-medium shadow-sm">
+                  {error}
+                </div>
+              )}
 
-            <div className="flex gap-3 pt-2">
-              <button
-                type="submit"
-                disabled={loading || !formData.caseDescription.trim()}
-                className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg"
-              >
-                {loading ? (
-                  <>
-                    <FiLoader className="animate-spin" /> Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <FaBrain /> Predict Outcome
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                className="px-4 py-3 rounded-xl border border-white/10 bg-neutral-800 hover:bg-neutral-700 text-slate-100 font-semibold"
-              >
-                Reset
-              </button>
-            </div>
-          </form>
+              <div className="pt-4 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={loading || !formData.caseDescription.trim()}
+                  className="w-full md:w-auto px-10 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg shadow-indigo-500/25 transition-all active:scale-[0.98]"
+                >
+                  <FaBrain className="text-xl" /> Analyze & Predict Outcome
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
+      ) : (
+        <div className="max-w-4xl mx-auto w-full pt-8 px-4 flex flex-col">
+          {/* Header Action Bar */}
+          <div className="flex items-center justify-between xl:-ml-12 mb-8">
+            <button
+              onClick={handleReset}
+              className="px-5 py-2.5 rounded-xl border border-white/10 bg-neutral-900/50 hover:bg-neutral-800 text-slate-300 font-medium transition-colors flex items-center gap-2 group backdrop-blur-md shadow-sm"
+            >
+              <span className="group-hover:-translate-x-1 transition-transform">←</span> Back to Editor
+            </button>
 
-        {/* Prediction Results */}
-        <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl shadow-xl h-fit lg:h-full flex flex-col overflow-hidden">
-          <div className="p-6 border-b border-white/10 shrink-0 flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-white">Prediction Results</h3>
-            {/* Feedback Option */}
-            {prediction && (
-              <div className="flex items-center gap-2">
+            {prediction && !loading && (
+              <div className="flex items-center gap-3 bg-neutral-900/50 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-md">
+                <span className="text-sm font-medium text-slate-300">Rate this prediction:</span>
                 {feedbackGiven ? (
-                  <span className="text-xs text-slate-500">Thanks for your feedback!</span>
+                  <span className="text-sm text-emerald-400 font-medium flex items-center gap-1"><FiThumbsUp /> Logged</span>
                 ) : (
-                  <>
-                    <span className="text-xs text-slate-400">Was this helpful?</span>
-                    <button
-                      onClick={() => handleFeedback(true)}
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-green-400 transition-colors"
-                      title="Helpful"
-                    >
-                      <FiThumbsUp className="text-sm" />
-                    </button>
-                    <button
-                      onClick={() => handleFeedback(false)}
-                      className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-rose-400 transition-colors"
-                      title="Not helpful"
-                    >
-                      <FiThumbsDown className="text-sm" />
-                    </button>
-                  </>
+                  <div className="flex gap-1.5">
+                    <button onClick={() => handleFeedback(true)} className="p-1.5 rounded-md bg-neutral-800 hover:bg-emerald-500/20 hover:text-emerald-400 text-slate-400 transition-colors" title="Accurate"><FiThumbsUp /></button>
+                    <button onClick={() => handleFeedback(false)} className="p-1.5 rounded-md bg-neutral-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 transition-colors" title="Inaccurate"><FiThumbsDown /></button>
+                  </div>
                 )}
               </div>
             )}
           </div>
 
-          {!prediction && !loading && (
-            <div className="flex-1 flex items-center justify-center text-slate-400 p-12">
-              <div className="text-center">
-                <FaBrain className="text-6xl mx-auto mb-4 opacity-20" />
-                <p className="font-medium mb-2">No Prediction Yet</p>
-                <p className="text-sm">Enter case details and click "Predict Outcome"</p>
-                <p className="text-xs mt-2 text-slate-500">Uses AI + similar case analysis</p>
-              </div>
+          {loading ? (
+            <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl p-16 shadow-2xl flex flex-col items-center justify-center min-h-[400px]">
+              <FiLoader className="text-6xl text-indigo-500 animate-spin mb-6" />
+              <h3 className="text-2xl font-bold text-white mb-2">Analyzing Case Framework</h3>
+              <p className="text-slate-400 text-lg">Extracting legal principles, verifying precedence, and calculating probable outcomes...</p>
             </div>
-          )}
-
-          {loading && (
-            <div className="flex-1 flex items-center justify-center p-12">
-              <div className="text-center">
-                <FiLoader className="text-5xl mx-auto mb-4 text-indigo-500 animate-spin" />
-                <p className="text-slate-300 font-medium mb-2">Analyzing Your Case...</p>
-                <p className="text-sm text-slate-400">Searching similar cases and generating prediction</p>
+          ) : (
+            <div className="rounded-2xl ring-1 ring-white/10 bg-neutral-900/50 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col">
+              <div className="bg-neutral-800/80 px-8 py-6 border-b border-white/10">
+                <h3 className="text-2xl font-bold text-white flex items-center gap-3">
+                  <FaGavel className="text-indigo-400 text-3xl" /> 
+                  Prediction Results
+                </h3>
               </div>
-            </div>
-          )}
-
-          {prediction && (
-            <>
-              {/* Section Tabs */}
-              <div className="px-6 py-3 border-b border-white/10 shrink-0 overflow-x-auto scrollbar-hide">
-                <div className="flex gap-2">
-                  {sections.map((section) => {
-                    const Icon = section.icon;
-                    return (
-                      <button
-                        key={section.id}
-                        onClick={() => setActiveSection(section.id)}
-                        className={`px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap flex items-center gap-1.5 ${activeSection === section.id
-                            ? "bg-indigo-600/30 text-white"
-                            : "text-slate-400 hover:text-slate-200 hover:bg-neutral-800/50"
-                          }`}
-                      >
-                        <Icon className="text-xs" />
-                        {section.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Section Content */}
-              <div className="flex-1 overflow-y-auto p-6">
-                {activeSection === "overview" && (
-                  <div className="space-y-4">
-                    {/* Predicted Outcome */}
-                    <div className={`p-5 rounded-xl ${getOutcomeColor(prediction.prediction).bg} border ${getOutcomeColor(prediction.prediction).border}`}>
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-semibold text-white text-lg">Predicted Outcome</h4>
-                        <FaBalanceScale className={`text-2xl ${getOutcomeColor(prediction.prediction).text}`} />
-                      </div>
-                      <p className={`text-xl font-bold ${getOutcomeColor(prediction.prediction).text} mb-4`}>
-                        {prediction.prediction}
-                      </p>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-slate-300">Confidence Level</span>
-                          <span className="text-sm font-semibold text-white">{prediction.confidence}%</span>
-                        </div>
-                        <div className="w-full bg-neutral-800/50 rounded-full h-3 overflow-hidden">
-                          <div
-                            className={`h-3 rounded-full transition-all ${prediction.confidence >= 70 ? "bg-emerald-500" :
-                                prediction.confidence >= 50 ? "bg-amber-500" : "bg-rose-500"
-                              }`}
-                            style={{ width: `${prediction.confidence}%` }}
-                          />
-                        </div>
-                        <p className="text-xs text-slate-400 mt-2">
-                          {prediction.confidence >= 70 ? "High confidence based on strong precedents" :
-                            prediction.confidence >= 50 ? "Moderate confidence - outcome may vary" :
-                              "Lower confidence - limited similar cases found"}
-                        </p>
-                      </div>
+              
+              <div className="p-8">
+                  {/* Since the backend returns a perfectly formatted block in full_analysis/explanation, just pipe it nicely */}
+                  <div className="bg-neutral-900/50 rounded-xl p-8 border border-white/5 shadow-inner">
+                    <div className="text-slate-300 text-base leading-relaxed whitespace-pre-wrap font-serif">
+                       {prediction.full_analysis || prediction.explanation}
                     </div>
-
-                    {/* Quick Summary */}
-                    {prediction.explanation && (
-                      <div className="p-4 rounded-xl bg-neutral-800/50">
-                        <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
-                          <FaGavel className="text-indigo-400" />
-                          Analysis Summary
-                        </h4>
-                        <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{prediction.explanation}</p>
-                      </div>
-                    )}
-
-                    {/* Confidence Analysis */}
-                    {prediction.confidence_analysis && (
-                      <div className="p-4 rounded-xl bg-neutral-800/50">
-                        <h4 className="font-semibold text-white mb-3">Confidence Analysis</h4>
-                        <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{prediction.confidence_analysis}</p>
-                      </div>
-                    )}
                   </div>
-                )}
-
-                {activeSection === "analysis" && (
-                  <div className="space-y-4">
-                    {prediction.full_analysis ? (
-                      <div className="p-4 rounded-xl bg-neutral-800/50">
-                        <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
-                          <FaGavel className="text-indigo-400" />
-                          Complete Legal Analysis
-                        </h4>
-                        <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{prediction.full_analysis}</div>
-                      </div>
-                    ) : prediction.explanation && (
-                      <div className="p-4 rounded-xl bg-neutral-800/50">
-                        <h4 className="font-semibold text-white mb-3">Detailed Reasoning</h4>
-                        <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{prediction.explanation}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {activeSection === "risks" && (
-                  <div className="space-y-4">
-                    {/* Risk Factors */}
-                    {prediction.risk_factors && prediction.risk_factors.length > 0 && (
-                      <div className="p-4 rounded-xl bg-rose-900/20 border border-rose-500/30">
-                        <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
-                          <FaTimesCircle className="text-rose-400" />
-                          Risk Factors
-                        </h4>
-                        <ul className="space-y-2.5">
-                          {prediction.risk_factors.map((risk, i) => (
-                            <li key={i} className="text-slate-300 text-sm flex items-start gap-3">
-                              <span className="text-rose-400 font-bold text-lg mt-0.5">•</span>
-                              <span className="flex-1">{risk}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Recommendations */}
-                    {prediction.recommendations && prediction.recommendations.length > 0 && (
-                      <div className="p-4 rounded-xl bg-emerald-900/20 border border-emerald-500/30">
-                        <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
-                          <FaCheckCircle className="text-emerald-400" />
-                          Strategic Recommendations
-                        </h4>
-                        <ul className="space-y-2.5">
-                          {prediction.recommendations.map((rec, i) => (
-                            <li key={i} className="text-slate-300 text-sm flex items-start gap-3">
-                              <span className="text-emerald-400 font-bold text-lg mt-0.5">✓</span>
-                              <span className="flex-1">{rec}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {!prediction.risk_factors?.length && !prediction.recommendations?.length && (
-                      <div className="text-center text-slate-400 py-12">
-                        <FaExclamationTriangle className="text-4xl mx-auto mb-3 opacity-30" />
-                        <p>No specific risks or recommendations available</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {activeSection === "legal" && (
-                  <div className="space-y-4">
-                    {prediction.legal_basis ? (
-                      <div className="p-4 rounded-xl bg-neutral-800/50">
-                        <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
-                          <FaLightbulb className="text-amber-400" />
-                          Legal Basis & Precedents
-                        </h4>
-                        <div className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">{prediction.legal_basis}</div>
-                      </div>
-                    ) : (
-                      <div className="text-center text-slate-400 py-12">
-                        <FaLightbulb className="text-4xl mx-auto mb-3 opacity-30" />
-                        <p>Legal basis information not available</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {activeSection === "cases" && (
-                  <div className="space-y-3">
-                    {prediction.similarCases && prediction.similarCases.length > 0 ? (
-                      <>
-                        <p className="text-sm text-slate-400 mb-4">
-                          Found {prediction.similarCases.length} similar cases used for this prediction
-                        </p>
-                        {prediction.similarCases.map((similar, i) => (
-                          <div key={i} className="p-4 rounded-xl bg-neutral-800/50 hover:bg-neutral-800/70 transition-colors">
-                            <div className="flex items-start justify-between mb-2">
-                              <h5 className="text-sm font-semibold text-white">{similar.title || `Case ${i + 1}`}</h5>
-                              {similar.similarity && (
-                                <span className="px-2 py-1 rounded-full text-xs bg-indigo-500/20 text-indigo-400">
-                                  {(similar.similarity * 100).toFixed(0)}% match
-                                </span>
-                              )}
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
-                              <div>Court: {similar.court || "N/A"}</div>
-                              <div>Date: {similar.date || "N/A"}</div>
-                              {similar.case_type && <div>Type: {similar.case_type}</div>}
-                              {similar.citation && <div>Citation: {similar.citation}</div>}
-                            </div>
-                            {similar.excerpt && (
-                              <p className="text-xs text-slate-500 mt-2 line-clamp-2">{similar.excerpt}</p>
-                            )}
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      <div className="text-center text-slate-400 py-12">
-                        <FaBrain className="text-4xl mx-auto mb-3 opacity-30" />
-                        <p>No similar cases found</p>
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
-            </>
+            </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

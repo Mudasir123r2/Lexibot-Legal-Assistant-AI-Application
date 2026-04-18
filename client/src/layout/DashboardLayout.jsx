@@ -65,6 +65,42 @@ export default function DashboardLayout({ children }) {
             />
           </header>
 
+          {/* Notification Banner for Reminders */}
+          {notifications.length > 0 && (() => {
+            const now = new Date();
+            const overdueCount = notifications.filter(n => new Date(n.dueDate) < now).length;
+            const dueTodayCount = notifications.length - overdueCount;
+
+            let message = "";
+            if (overdueCount > 0 && dueTodayCount > 0) {
+              message = `You have ${overdueCount} overdue and ${dueTodayCount} due reminder(s) waiting for you.`;
+            } else if (overdueCount > 0) {
+              message = `You have ${overdueCount} overdue reminder(s) that need immediate attention.`;
+            } else {
+              message = `You have ${dueTodayCount} reminder(s) due today.`;
+            }
+
+            return (
+             <div className="bg-rose-500/20 border-b border-rose-500/50 backdrop-blur-md px-4 py-2.5 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                   <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                   </span>
+                   <p className="text-sm font-medium text-rose-200">
+                      {message}
+                   </p>
+                </div>
+                <button 
+                  onClick={() => setIsNotificationsOpen(true)}
+                  className="text-xs bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 px-3 py-1 rounded border border-rose-500/30 transition-colors"
+                >
+                  View Details
+                </button>
+             </div>
+            );
+          })()}
+
           <main className="flex-1 overflow-y-auto w-full flex flex-col">
             <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col">
               <div className="flex-1 flex flex-col">
